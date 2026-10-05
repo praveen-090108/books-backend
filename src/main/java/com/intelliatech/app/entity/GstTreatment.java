@@ -1,0 +1,13 @@
+package com.intelliatech.app.entity;
+
+public enum GstTreatment {
+    REGISTERED_BUSINESS_REGULAR,
+    REGISTERED_BUSINESS_COMPOSITION,
+    UNREGISTERED_BUSINESS,
+    CONSUMER,
+    OVERSEAS,
+    SPECIAL_ECONOMIC_ZONE,
+    DEEMED_EXPORT,
+    TAX_DEDUCTOR,
+    TAX_COLLECTOR
+}

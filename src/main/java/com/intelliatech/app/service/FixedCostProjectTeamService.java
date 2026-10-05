@@ -1,0 +1,34 @@
+package com.intelliatech.app.service;
+
+import com.fasterxml.jackson.databind.*;
+import com.fasterxml.jackson.databind.node.*;
+import com.intelliatech.app.entity.BusinessRecord;
+import com.intelliatech.app.repository.BusinessRecordRepository;
+import com.intelliatech.app.security.*;
+import java.math.BigDecimal;
+import java.time.*;
+import java.util.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.jdbc.core.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service @RequiredArgsConstructor
+public class FixedCostProjectTeamService {
+ private final JdbcTemplate jdbc;private final BusinessRecordRepository records;private final CurrentUserService users;private final DataScopeService scopes;private final ObjectMapper json;
+ public record AddRequest(Long employeeId,LocalDate addedDate,String notes){}
+ public record RemoveRequest(LocalDate removedDate,String removalNote){}
+ public record Assignment(Long id,Long projectId,Long employeeId,String employeeName,String designation,String department,BigDecimal monthlySalary,String salaryCurrency,LocalDate addedDate,Long addedBy,String addedByName,String notes,String status,LocalDate removedDate,Long removedBy,String removedByName,String removalNote){}
+
+ @Transactional(readOnly=true) public List<Assignment> list(Long projectId){project(projectId,false);return rows(projectId);}
+ @Transactional(readOnly=true) public Assignment get(Long projectId,Long id){project(projectId,false);return rows(projectId).stream().filter(x->x.id().equals(id)).findFirst().orElseThrow(()->new IllegalArgumentException("Team assignment does not exist for this project."));}
+ @Transactional public Assignment add(Long projectId,AddRequest request){BusinessRecord project=project(projectId,true);if(request.employeeId()==null)throw new IllegalArgumentException("Employee is required.");BusinessRecord employee=records.findByModuleAndTypeAndId("resources","resources",request.employeeId()).orElseThrow(()->new IllegalArgumentException("Employee does not exist."));if(!"Active".equalsIgnoreCase(employee.getStatus()))throw new IllegalArgumentException("Only active employees can be added to a Project Team.");Integer active=jdbc.queryForObject("SELECT COUNT(*) FROM fixed_cost_project_team_member WHERE project_id=? AND employee_id=? AND assignment_status='ACTIVE'",Integer.class,projectId,employee.getId());if(active!=null&&active>0)throw new IllegalArgumentException(employee.getPartyName()+" is already an active team member on this project.");LocalDate added=request.addedDate()==null?LocalDate.now():request.addedDate();validateDate(project,added,"Added Date");jdbc.update("INSERT INTO fixed_cost_project_team_member(project_id,employee_id,role_designation,added_date,notes,assignment_status,created_by) VALUES(?,?,?,?,?,'ACTIVE',?)",projectId,employee.getId(),employee.getCategory(),added,clean(request.notes()),users.getCurrentUserId());syncProjectNotes(project);Long id=jdbc.queryForObject("SELECT MAX(id) FROM fixed_cost_project_team_member WHERE project_id=? AND employee_id=?",Long.class,projectId,employee.getId());return get(projectId,id);}
+ @Transactional public Assignment remove(Long projectId,Long id,RemoveRequest request){BusinessRecord project=project(projectId,true);Assignment assignment=get(projectId,id);if(!"ACTIVE".equals(assignment.status()))throw new IllegalArgumentException("This Project Team assignment is already inactive.");LocalDate removed=request.removedDate()==null?LocalDate.now():request.removedDate();if(removed.isBefore(assignment.addedDate()))throw new IllegalArgumentException("Removed Date must be on or after Added Date.");validateDate(project,removed,"Removed Date");jdbc.update("UPDATE fixed_cost_project_team_member SET assignment_status='INACTIVE',removed_date=?,removed_by=?,removal_note=? WHERE id=? AND project_id=? AND assignment_status='ACTIVE'",removed,users.getCurrentUserId(),clean(request.removalNote()),id,projectId);syncProjectNotes(project);return get(projectId,id);}
+
+ private BusinessRecord project(Long id,boolean lock){BusinessRecord project=(lock?records.findFixedCostProjectForUpdate(id):records.findByModuleAndTypeAndId("projects","fixedCost",id)).orElseThrow(()->new IllegalArgumentException("Fixed Cost Project does not exist."));scopes.validateRecordAccess(project.getCreatedBy());return project;}
+ private void validateDate(BusinessRecord project,LocalDate date,String label){if(date.isBefore(project.getRecordDate())||project.getDueDate()!=null&&date.isAfter(project.getDueDate()))throw new IllegalArgumentException(label+" must fall within the Project duration.");}
+ private List<Assignment> rows(Long projectId){return jdbc.query("SELECT t.id,t.project_id,t.employee_id,e.party_name employee_name,COALESCE(t.role_designation,e.category) designation,e.department,COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.notes,'$.monthlySalary')) AS DECIMAL(14,2)),0) monthly_salary,COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.notes,'$.salaryCurrency')),'null'),'INR') salary_currency,t.added_date,t.created_by,au.name added_by_name,t.notes,t.assignment_status,t.removed_date,t.removed_by,ru.name removed_by_name,t.removal_note FROM fixed_cost_project_team_member t JOIN business_records e ON e.id=t.employee_id LEFT JOIN app_users au ON au.id=t.created_by LEFT JOIN app_users ru ON ru.id=t.removed_by WHERE t.project_id=? ORDER BY t.added_date,t.id",(rs,n)->new Assignment(rs.getLong("id"),rs.getLong("project_id"),rs.getLong("employee_id"),rs.getString("employee_name"),rs.getString("designation"),rs.getString("department"),rs.getBigDecimal("monthly_salary"),rs.getString("salary_currency"),rs.getObject("added_date",LocalDate.class),nullableLong(rs,"created_by"),rs.getString("added_by_name"),rs.getString("notes"),rs.getString("assignment_status"),rs.getObject("removed_date",LocalDate.class),nullableLong(rs,"removed_by"),rs.getString("removed_by_name"),rs.getString("removal_note")),projectId);}
+ private void syncProjectNotes(BusinessRecord project){try{ObjectNode root=project.getNotes()==null||project.getNotes().isBlank()?json.createObjectNode():(ObjectNode)json.readTree(project.getNotes());ArrayNode ids=root.putArray("teamMemberIds");jdbc.queryForList("SELECT employee_id FROM fixed_cost_project_team_member WHERE project_id=? AND assignment_status='ACTIVE' ORDER BY id",Long.class,project.getId()).forEach(ids::add);project.setNotes(json.writeValueAsString(root));project.setUpdatedBy(users.getCurrentUserId());records.save(project);}catch(Exception e){throw new IllegalArgumentException("Unable to update Project Team.");}}
+ private Long nullableLong(java.sql.ResultSet rs,String column)throws java.sql.SQLException{long value=rs.getLong(column);return rs.wasNull()?null:value;}
+ private String clean(String value){return value==null||value.trim().isEmpty()?null:value.trim();}
+}

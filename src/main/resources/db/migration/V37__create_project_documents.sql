@@ -1,0 +1,21 @@
+CREATE TABLE project_documents (
+    id BIGINT NOT NULL AUTO_INCREMENT,
+    project_id BIGINT NOT NULL,
+    project_type VARCHAR(32) NOT NULL,
+    original_file_name VARCHAR(500) NOT NULL,
+    storage_key VARCHAR(1000) NOT NULL,
+    file_extension VARCHAR(20),
+    mime_type VARCHAR(150),
+    file_size BIGINT NOT NULL,
+    uploaded_by BIGINT,
+    uploaded_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    deleted_by BIGINT,
+    deleted_at TIMESTAMP NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT fk_project_document_project FOREIGN KEY (project_id) REFERENCES business_records(id),
+    CONSTRAINT fk_project_document_uploaded_by FOREIGN KEY (uploaded_by) REFERENCES app_users(id),
+    CONSTRAINT fk_project_document_deleted_by FOREIGN KEY (deleted_by) REFERENCES app_users(id),
+    INDEX idx_project_documents_lookup (project_id, project_type, active),
+    INDEX idx_project_documents_uploaded_at (uploaded_at)
+);

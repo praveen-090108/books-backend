@@ -1,0 +1,49 @@
+package com.intelliatech.app.dto.response;
+
+import com.intelliatech.app.entity.ExpenseAmountType;
+import com.intelliatech.app.entity.ExpenseStatus;
+import com.intelliatech.app.entity.ExpenseType;
+import com.intelliatech.app.entity.GstTreatment;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+public record ExpenseResponse(
+        Long id,
+        String expenseNumber,
+        LocalDate expenseDate,
+        String expenseAccount,
+        String expenseTitle,
+        ExpenseType expenseType,
+        Long vendorId,
+        String vendorName,
+        String vendorGstin,
+        String invoiceNumber,
+        String hsnCode,
+        String sacCode,
+        GstTreatment gstTreatment,
+        String sourceOfSupplyCode,
+        String sourceOfSupplyName,
+        String destinationOfSupplyCode,
+        String destinationOfSupplyName,
+        Long taxId,
+        String taxName,
+        ExpenseAmountType amountType,
+        ExpenseTaxSummaryResponse taxSummary,
+        BigDecimal tdsDeducted,
+        String currency,
+        String referenceNumber,
+        String description,
+        String notes,
+        String paymentMode,
+        String paidThrough,
+        Long bankAccountId,
+        String bankAccountName,
+        String projectName,
+        ExpenseStatus status,
+        String attachmentName,
+        String attachmentUrl,
+        String createdBy,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt
+) {}

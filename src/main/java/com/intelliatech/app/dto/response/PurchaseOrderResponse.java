@@ -1,0 +1,78 @@
+package com.intelliatech.app.dto.response;
+
+import com.intelliatech.app.entity.ExpenseAmountType;
+import com.intelliatech.app.entity.GstTreatment;
+import com.intelliatech.app.entity.PurchaseOrderStatus;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+
+public record PurchaseOrderResponse(
+        Long id,
+        String purchaseOrderNumber,
+        LocalDate purchaseOrderDate,
+        LocalDate expectedDeliveryDate,
+        Long vendorId,
+        String vendorName,
+        String vendorGstin,
+        String vendorEmail,
+        String vendorPhone,
+        PurchaseOrderAddressResponse vendorAddress,
+        PurchaseOrderAddressResponse deliveryAddress,
+        String deliveryAddressSource,
+        String referenceNumber,
+        String shipmentPreference,
+        String paymentTerms,
+        String currencyCode,
+        BigDecimal exchangeRate,
+        GstTreatment gstTreatment,
+        String sourceOfSupplyCode,
+        String sourceOfSupplyName,
+        String destinationOfSupplyCode,
+        String destinationOfSupplyName,
+        String placeOfSupplyCode,
+        String placeOfSupplyName,
+        String projectName,
+        String branchName,
+        String warehouseName,
+        String attention,
+        PurchaseOrderStatus status,
+        ExpenseAmountType amountType,
+        BigDecimal subtotal,
+        BigDecimal discountAmount,
+        BigDecimal taxableAmount,
+        BigDecimal cgstAmount,
+        BigDecimal sgstAmount,
+        BigDecimal igstAmount,
+        BigDecimal cessAmount,
+        BigDecimal shippingCharge,
+        BigDecimal adjustmentAmount,
+        BigDecimal roundOffAmount,
+        BigDecimal totalTaxAmount,
+        BigDecimal totalAmount,
+        String notes,
+        String termsAndConditions,
+        String attachmentName,
+        String attachmentUrl,
+        Long linkedBillId,
+        String linkedBillNumber,
+        LocalDateTime issuedAt,
+        String issuedBy,
+        LocalDateTime receivedAt,
+        String receivedBy,
+        LocalDateTime cancelledAt,
+        String cancelledBy,
+        String cancellationReason,
+        LocalDateTime closedAt,
+        String closedBy,
+        String closingReason,
+        String createdBy,
+        String updatedBy,
+        LocalDateTime createdAt,
+        LocalDateTime updatedAt,
+        List<PurchaseOrderItemResponse> items,
+        List<PurchaseOrderActivityResponse> activities,
+        Set<String> availableActions
+) {}

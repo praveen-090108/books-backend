@@ -1,0 +1,52 @@
+package com.intelliatech.app.dto.response;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+
+public record PaymentReceivedResponse(
+        Long id,
+        String paymentNumber,
+        String receiptNumber,
+        Long customerId,
+        String customerName,
+        String customerEmail,
+        String customerPhone,
+        String customerAddress,
+        LocalDate paymentDate,
+        String paymentMode,
+        String depositAccount,
+        Long bankAccountId,
+        String referenceNumber,
+        BigDecimal grossAmountReceived,
+        BigDecimal tdsAmount,
+        BigDecimal bankCharges,
+        BigDecimal netBankCredit,
+        BigDecimal allocatedAmount,
+        BigDecimal unallocatedAmount,
+        String status,
+        String bankAccountName,
+        String bankName,
+        String maskedAccountNumber,
+        String transactionId,
+        String chequeNumber,
+        LocalDate chequeDate,
+        String tdsBaseType,
+        BigDecimal tdsBaseAmount,
+        BigDecimal tdsPercentage,
+        String tdsSectionCode,
+        String tdsCertificateNumber,
+        LocalDate tdsCertificateDate,
+        String tdsRemarks,
+        String notes,
+        String attachmentUrl,
+        Boolean sendThankYouEmail,
+        Boolean reconciled,
+        Boolean reversed,
+        LocalDateTime reversedAt,
+        String reversalReason,
+        List<PaymentReceivedAllocationResponse> allocations,
+        LocalDateTime createdAt
+) {
+}

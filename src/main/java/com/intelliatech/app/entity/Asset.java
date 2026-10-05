@@ -1,0 +1,77 @@
+package com.intelliatech.app.entity;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+
+@Getter @Setter @Entity @Table(name = "assets")
+@EntityListeners(AuditingEntityListener.class)
+public class Asset {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
+    @Column(nullable = false) private Long organizationId = 1L;
+    @Column(nullable = false, length = 64) private String assetNumber;
+    @Column(nullable = false, length = 180) private String assetName;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "category_id") private AssetCategory category;
+    @Column(length = 120) private String subCategory;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 24) private AssetEnums.AssetType assetType;
+    @Enumerated(EnumType.STRING) @Column(name = "asset_owner", length = 20) private AssetEnums.AssetOwnerType assetOwner;
+    @Column(length = 100) private String brand;
+    @Column(length = 100) private String model;
+    @Column(length = 120) private String serialNumber;
+    @Column(length = 120) private String barcode;
+    @Column(nullable = false, precision = 18, scale = 3) private BigDecimal quantity = BigDecimal.ONE;
+    @Column(length = 32) private String unit;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 24) private AssetEnums.AssetCondition assetCondition;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 32) private AssetEnums.AssetStatus status = AssetEnums.AssetStatus.DRAFT;
+    @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vendor_id") private Vendor vendor;
+    @Column(length = 180) private String vendorName;
+    private LocalDate purchaseDate;
+    @Column(length = 120) private String invoiceNumber;
+    @Column(length = 120) private String poNumber;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal purchaseValue = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal taxAmount = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal totalAmount = BigDecimal.ZERO;
+    @Column(length = 64) private String paymentMethod;
+    private LocalDate warrantyExpiry;
+    @Column(length = 160) private String locationName;
+    @Column(length = 160) private String departmentName;
+    @Column(length = 120) private String floorRoom;
+    @Column(length = 120) private String costCenter;
+    private Long assignedResourceId;
+    @Column(length = 180) private String assignedResourceName;
+    @Enumerated(EnumType.STRING) @Column(nullable = false, length = 16) private AssetEnums.OwnershipType ownershipType = AssetEnums.OwnershipType.OWNED;
+    private LocalDate leaseStartDate;
+    private LocalDate leaseEndDate;
+    @Column(length = 120) private String manufacturer;
+    private Integer manufactureYear;
+    @Column(length = 100) private String countryOfOrigin;
+    @Column(length = 32) private String hsnSacCode;
+    private Integer usefulLifeMonths;
+    @Column(columnDefinition = "TEXT") private String notes;
+    @Enumerated(EnumType.STRING) @Column(length = 40) private AssetEnums.DepreciationMethod depreciationMethod;
+    private LocalDate depreciationStartDate;
+    @Enumerated(EnumType.STRING) @Column(length = 24) private AssetEnums.Frequency depreciationFrequency;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal residualValue = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal scrapValue = BigDecimal.ZERO;
+    private LocalDate capitalizationDate;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal currentValue = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal accumulatedDepreciation = BigDecimal.ZERO;
+    @Column(nullable = false, precision = 18, scale = 2) private BigDecimal netBookValue = BigDecimal.ZERO;
+    @Column(length = 1000) private String imageUrl;
+    @Column(name = "is_draft", nullable = false) private boolean draft;
+    @Column(nullable = false) private boolean deleted;
+    @Column(nullable = false, length = 120) private String createdBy = "Admin";
+    @Column(nullable = false, length = 120) private String updatedBy = "Admin";
+    @CreatedDate @Column(nullable = false, updatable = false) private LocalDateTime createdAt;
+    @LastModifiedDate @Column(nullable = false) private LocalDateTime updatedAt;
+    @Version private Long version;
+    @OneToMany(mappedBy = "asset", cascade = CascadeType.ALL, orphanRemoval = true) private List<AssetAttachment> attachments = new ArrayList<>();
+}

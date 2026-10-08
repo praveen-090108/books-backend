@@ -6,11 +6,15 @@ import com.intelliatech.app.dto.request.InvoiceReminderRequest;
 import com.intelliatech.app.dto.request.RecordInvoicePaymentRequest;
 import com.intelliatech.app.dto.request.ReverseInvoicePaymentRequest;
 import com.intelliatech.app.dto.request.VoidInvoiceRequest;
+import com.intelliatech.app.dto.request.CancelIrnRequest;
 import com.intelliatech.app.dto.response.InvoiceLifecycleResponse;
+import com.intelliatech.app.dto.response.EInvoiceResponse;
 import com.intelliatech.app.dto.response.EligibleInvoiceForCreditNoteResponse;
 import com.intelliatech.app.service.InvoiceLifecycleService;
+import com.intelliatech.app.service.EInvoiceService;
 import java.util.List;
 import java.util.Map;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,6 +33,31 @@ import org.springframework.web.bind.annotation.RestController;
 public class InvoiceLifecycleController {
 
     private final InvoiceLifecycleService service;
+    private final EInvoiceService eInvoiceService;
+
+    @GetMapping("/{invoiceId}/e-invoice")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT', 'SALES')")
+    public EInvoiceResponse findEInvoice(@PathVariable Long invoiceId) {
+        return eInvoiceService.findByInvoiceId(invoiceId);
+    }
+
+    @PostMapping("/{invoiceId}/e-invoice/generate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
+    public EInvoiceResponse generateIrn(@PathVariable Long invoiceId) {
+        return eInvoiceService.generate(invoiceId);
+    }
+
+    @PostMapping("/{invoiceId}/e-invoice/cancel")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
+    public EInvoiceResponse cancelIrn(@PathVariable Long invoiceId, @Valid @RequestBody CancelIrnRequest request) {
+        return eInvoiceService.cancel(invoiceId, request);
+    }
+
+    @PostMapping("/{invoiceId}/e-invoice/refresh")
+    @PreAuthorize("hasAnyRole('ADMIN', 'ACCOUNTANT')")
+    public EInvoiceResponse refreshIrn(@PathVariable Long invoiceId) {
+        return eInvoiceService.refresh(invoiceId);
+    }
 
     @GetMapping("/lifecycle")
     public Map<Long, InvoiceLifecycleResponse> findAll(@RequestParam List<Long> ids) {

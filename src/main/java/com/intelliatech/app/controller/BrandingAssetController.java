@@ -46,7 +46,7 @@ public class BrandingAssetController {
 
     @GetMapping("/branding-assets/{fileName}")
     public ResponseEntity<byte[]> getBrandingLogo(@PathVariable String fileName) {
-        if (!properties.enabled() || !SAFE_FILE_NAME.matcher(fileName).matches()) {
+        if (!properties.complete() || !SAFE_FILE_NAME.matcher(fileName).matches()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         String key = normalizedPrefix() + "branding/logo/" + fileName;

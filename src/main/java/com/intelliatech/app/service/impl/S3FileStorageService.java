@@ -66,9 +66,10 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_LOGO_SIZE_BYTES, ALLOWED_CONTENT_TYPES,
                 "Logo file is required.", "Logo file size must be 2 MB or less.",
                 "Only PNG, JPG, SVG, and WEBP logo files are supported.");
-        if (!properties.enabled()) {
+        if (!properties.complete()) {
             throw new IllegalStateException(
-                    "S3 storage must be configured before uploading a branding logo."
+                    "Branding logo storage is not configured. Set AWS_S3_BUCKET and AWS_REGION; " +
+                    "then grant the backend IAM role permission to upload to that bucket."
             );
         }
         return upload(file, "branding/logo/", "logo", "Unable to upload branding logo to S3");
@@ -130,8 +131,8 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_ASSET_IMAGE_SIZE_BYTES, ALLOWED_ASSET_IMAGE_TYPES,
                 "Asset image is required.", "Asset image size must be 10 MB or less.",
                 "Only PNG, JPG, JPEG, and WEBP asset images are supported.");
-        if (!properties.enabled()) {
-            throw new IllegalStateException("S3 storage must be configured before uploading asset images.");
+        if (!properties.complete()) {
+            throw new IllegalStateException("Asset image storage is not configured. Set AWS_S3_BUCKET and AWS_REGION.");
         }
         return upload(file, "assets/" + assetId + "/images/", "asset-image",
                 "Unable to upload asset image to S3");
@@ -139,7 +140,7 @@ public class S3FileStorageService implements FileStorageService {
 
     @Override
     public StoredFile download(String key) {
-        if (properties.enabled()) {
+        if (properties.active()) {
             var object = s3StorageUtil.download(key);
             return new StoredFile(object.content(), object.contentType());
         }
@@ -165,7 +166,7 @@ public class S3FileStorageService implements FileStorageService {
         String key = normalizedPrefix() + relativeKey;
         String contentType = file.getContentType();
 
-        if (!properties.enabled()) {
+        if (!properties.active()) {
             return uploadLocally(file, relativeKey, originalName, contentType, errorMessage);
         }
         return s3StorageUtil.upload(file, key, originalName, contentType, errorMessage);

@@ -42,6 +42,8 @@ app:
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
       key-prefix: ${AWS_S3_KEY_PREFIX:intelliatech-books}
       public-base-url: ${AWS_S3_PUBLIC_BASE_URL:}
+  einvoice:
+    public-key-location: ${EINVOICE_PUBLIC_KEY_LOCATION:classpath:einvoice/EY_IRP_Sandbox_auth_public_key_2027.pem}
 
 springdoc:
   swagger-ui:

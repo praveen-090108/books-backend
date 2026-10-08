@@ -40,6 +40,7 @@ import com.intelliatech.app.repository.InvoicePaymentAllocationRepository;
 import com.intelliatech.app.repository.InvoicePaymentRepository;
 import com.intelliatech.app.repository.InvoiceReminderRepository;
 import com.intelliatech.app.repository.InvoiceTdsDeductionRepository;
+import com.intelliatech.app.repository.EInvoiceDetailRepository;
 import com.intelliatech.app.repository.PaymentReceiptRepository;
 import com.intelliatech.app.service.InvoiceLifecycleService;
 import com.intelliatech.app.service.BankAccountService;
@@ -92,6 +93,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
     private final InvoiceCommunicationRepository communicationRepository;
     private final ObjectMapper objectMapper;
     private final BankAccountService bankAccountService;
+    private final EInvoiceDetailRepository eInvoiceDetailRepository;
 
     @Autowired
     public InvoiceLifecycleServiceImpl(BusinessRecordRepository businessRecordRepository,
@@ -101,7 +103,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
             InvoiceCreditAllocationRepository creditAllocationRepository,
             InvoiceCreditNoteLinkRepository creditNoteLinkRepository, InvoiceReminderRepository reminderRepository,
             InvoiceCommunicationRepository communicationRepository, ObjectMapper objectMapper,
-            BankAccountService bankAccountService) {
+            BankAccountService bankAccountService, EInvoiceDetailRepository eInvoiceDetailRepository) {
         this.businessRecordRepository = businessRecordRepository;
         this.lifecycleRepository = lifecycleRepository;
         this.counterRepository = counterRepository;
@@ -115,6 +117,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         this.communicationRepository = communicationRepository;
         this.objectMapper = objectMapper;
         this.bankAccountService = bankAccountService;
+        this.eInvoiceDetailRepository = eInvoiceDetailRepository;
     }
 
     InvoiceLifecycleServiceImpl(BusinessRecordRepository businessRecordRepository,
@@ -126,7 +129,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
             InvoiceCommunicationRepository communicationRepository, ObjectMapper objectMapper) {
         this(businessRecordRepository, lifecycleRepository, counterRepository, paymentRepository,
                 allocationRepository, tdsRepository, receiptRepository, creditAllocationRepository,
-                creditNoteLinkRepository, reminderRepository, communicationRepository, objectMapper, null);
+                creditNoteLinkRepository, reminderRepository, communicationRepository, objectMapper, null, null);
     }
 
     @Override
@@ -816,8 +819,15 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
 
     private List<InvoiceCreditNoteLinkResponse> creditNoteResponses(Long invoiceId) {
         return creditNoteLinkRepository.findAllByInvoiceId(invoiceId).stream()
-                .map(link -> new InvoiceCreditNoteLinkResponse(link.getId(), link.getCreditNote().getId(), link.getCreditNote().getRecordNumber(),
-                        money(link.getAmountApplied()), link.getCreatedAt()))
+                .map(link -> {
+                    BusinessRecord creditNote = link.getCreditNote();
+                    String eInvoiceStatus = eInvoiceDetailRepository == null ? "NOT_GENERATED"
+                            : eInvoiceDetailRepository.findByCreditNoteId(creditNote.getId())
+                            .map(detail -> detail.getStatus().name()).orElse("NOT_GENERATED");
+                    return new InvoiceCreditNoteLinkResponse(link.getId(), creditNote.getId(), creditNote.getRecordNumber(),
+                            creditNote.getRecordDate(), money(creditNote.getAmount()), eInvoiceStatus,
+                            money(link.getAmountApplied()), money(creditNote.getBalanceAmount()), link.getCreatedAt());
+                })
                 .toList();
     }
 

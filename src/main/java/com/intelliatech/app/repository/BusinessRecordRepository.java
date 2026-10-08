@@ -30,6 +30,14 @@ public interface BusinessRecordRepository extends JpaRepository<BusinessRecord, 
     Optional<BusinessRecord> findByModuleAndTypeAndId(String module, String type, Long id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from BusinessRecord r where r.module='sales' and r.type='invoices' and r.id=:id")
+    Optional<BusinessRecord> findInvoiceForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select r from BusinessRecord r where r.module='sales' and r.type='creditNotes' and r.id=:id")
+    Optional<BusinessRecord> findCreditNoteForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from BusinessRecord r where r.module='projects' and r.type='fixedCost' and r.id=:id")
     Optional<BusinessRecord> findFixedCostProjectForUpdate(@Param("id") Long id);
 

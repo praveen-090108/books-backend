@@ -13,7 +13,7 @@ import software.amazon.awssdk.services.s3.S3ClientBuilder;
 
 @Configuration
 @RequiredArgsConstructor
-@EnableConfigurationProperties(S3StorageProperties.class)
+@EnableConfigurationProperties({S3StorageProperties.class, StorageProperties.class})
 public class S3Config {
 
     private final S3StorageProperties properties;

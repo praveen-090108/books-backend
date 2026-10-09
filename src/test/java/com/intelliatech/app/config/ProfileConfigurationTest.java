@@ -23,6 +23,9 @@ class ProfileConfigurationTest {
         assertThat(value(common, "server.port")).isEqualTo(8080);
         assertThat(value(sandbox, "app.environment")).isEqualTo("sandbox");
         assertThat(value(sandbox, "spring.datasource.url").toString()).contains("/intelliatech_books?");
+        assertThat(value(common, "app.storage.provider")).isEqualTo("s3");
+        assertThat(value(sandbox, "app.storage.s3.enabled")).isEqualTo(true);
+        assertThat(value(sandbox, "app.storage.s3.bucket")).isEqualTo("${AWS_S3_BUCKET:intellia-one}");
     }
 
     @Test
@@ -32,6 +35,7 @@ class ProfileConfigurationTest {
         assertThat(value(production, "app.environment")).isEqualTo("production");
         assertThat(value(production, "spring.jpa.show-sql")).isEqualTo(false);
         assertThat(value(production, "app.bootstrap.default-admin-enabled")).isEqualTo(false);
+        assertThat(value(production, "app.storage.s3.enabled")).isEqualTo(true);
         assertThat(value(production, "springdoc.swagger-ui.enabled")).isEqualTo(false);
     }
 

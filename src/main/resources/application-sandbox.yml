@@ -23,16 +23,19 @@ app:
   bootstrap:
     default-admin-enabled: true
   storage:
+    # Kept only so historical local attachment keys remain readable until they are migrated.
     local:
       enabled: true
       directory: ./uploads
       public-base-url: http://127.0.0.1:8080/uploads
     s3:
-      enabled: false
-      bucket: ''
+      enabled: true
+      bucket: ${AWS_S3_BUCKET:intellia-one}
+      region: ${AWS_REGION:ap-south-1}
       access-key-id: ''
       secret-access-key: ''
-      public-base-url: ''
+      key-prefix: ${AWS_S3_KEY_PREFIX:intelliatech-books}
+      public-base-url: ${AWS_S3_PUBLIC_BASE_URL:}
   einvoice:
     public-key-location: classpath:einvoice/EY_IRP_Sandbox_auth_public_key_2027.pem
 

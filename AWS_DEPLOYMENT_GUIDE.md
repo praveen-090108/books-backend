@@ -36,7 +36,8 @@ account before executing the parameterized commands below. Do not guess them.
    them through Settings after deployment. Changing the key cannot decrypt old
    ciphertext; do not silently rotate it.
 8. Configure a strong `JWT_SECRET`, database credentials, CORS origin, and the
-   S3 settings listed below. Prefer an EC2/ECS task role over static AWS keys.
+   S3 settings listed below. The application uses S3 for every new upload in
+   both profiles. Prefer an EC2/ECS task role over static AWS keys.
 
 ## B. Database update
 
@@ -76,10 +77,10 @@ SERVER_PORT=8080
 CORS_ALLOWED_ORIGINS=https://<production-frontend-host>
 JWT_SECRET=<strong-stable-secret>
 IRP_CREDENTIAL_ENCRYPTION_KEY=<stable-base64-32-byte-key>
-AWS_S3_BUCKET=<existing-private-or-public-asset-bucket>
+AWS_S3_BUCKET=<existing-private-asset-bucket>
 AWS_REGION=ap-south-1
 AWS_S3_KEY_PREFIX=intelliatech-books
-AWS_S3_PUBLIC_BASE_URL=<approved-public-or-cloudfront-base-url>
+AWS_S3_PUBLIC_BASE_URL=<optional-approved-cloudfront-base-url>
 EINVOICE_PUBLIC_KEY_LOCATION=classpath:einvoice/EY_IRP_Sandbox_auth_public_key_2027.pem
 ```
 
@@ -100,6 +101,12 @@ curl --fail https://<backend-host>/api/health
 Do not place EY Client ID, Client Secret, API username, or API password in these
 environment variables. They are entered in the administrator Settings UI and
 stored encrypted in MySQL.
+
+The Sandbox profile defaults to bucket `intellia-one` in `ap-south-1`, while
+still allowing `AWS_S3_BUCKET` and `AWS_REGION` overrides. It intentionally
+keeps read-only local-storage compatibility so historical attachment keys can
+be downloaded until a verified S3 migration is complete. New uploads never
+fall back to local disk when S3 is unavailable.
 
 ## D. Frontend build and deployment
 

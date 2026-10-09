@@ -34,8 +34,7 @@ public class S3StorageUtil {
             MultipartFile file,
             String key,
             String originalName,
-            String contentType,
-            String errorMessage
+            String contentType
     ) {
         validateConfiguration();
         try {
@@ -48,29 +47,33 @@ public class S3StorageUtil {
             s3Client.putObject(request, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
             return new FileUploadResponse(key, publicUrl(key), originalName, contentType, file.getSize());
         } catch (IOException exception) {
-            throw new IllegalStateException(errorMessage, exception);
+            log.error("Unable to read upload stream for S3 bucket '{}' and key '{}'", properties.bucket(), key, exception);
+            throw new IllegalStateException("We couldn't upload your document. Please try again.", exception);
         } catch (SdkException exception) {
             log.error("S3 upload failed for bucket '{}' and key '{}': {}",
-                    properties.bucket(), key, exception.getMessage());
-            throw new IllegalStateException(
-                    "Unable to upload the file to S3. Verify the bucket, region, and AWS permissions.",
-                    exception
-            );
+                    properties.bucket(), key, exception.getMessage(), exception);
+            throw new IllegalStateException("We couldn't upload your document. Please try again.", exception);
         }
     }
 
     public StoredObject download(String key) {
         validateConfiguration();
-        ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
-                .bucket(properties.bucket())
-                .key(key)
-                .build());
-        return new StoredObject(object.asByteArray(), object.response().contentType());
+        try {
+            ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
+                    .bucket(properties.bucket())
+                    .key(key)
+                    .build());
+            return new StoredObject(object.asByteArray(), object.response().contentType());
+        } catch (SdkException exception) {
+            log.error("S3 download failed for bucket '{}' and key '{}': {}",
+                    properties.bucket(), key, exception.getMessage(), exception);
+            throw new IllegalStateException("We couldn't download your document. Please try again.", exception);
+        }
     }
 
     private void validateConfiguration() {
         if (!StringUtils.hasText(properties.bucket()) || !StringUtils.hasText(properties.region())) {
-            throw new IllegalStateException("S3 bucket and region must be configured before uploading files.");
+            throw new IllegalStateException("File storage is not configured. Set the S3 bucket and region.");
         }
     }
 

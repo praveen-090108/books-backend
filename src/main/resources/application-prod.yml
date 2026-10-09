@@ -25,16 +25,19 @@ app:
   bootstrap:
     default-admin-enabled: false
   storage:
+    # Read-only compatibility for historical local keys; all new uploads use S3.
     local:
-      enabled: false
+      enabled: true
       directory: ./uploads
       public-base-url: ''
     s3:
       enabled: true
       bucket: ${AWS_S3_BUCKET}
+      region: ${AWS_REGION:ap-south-1}
+      key-prefix: ${AWS_S3_KEY_PREFIX:intelliatech-books}
       access-key-id: ${AWS_ACCESS_KEY_ID:}
       secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
-      public-base-url: ${AWS_S3_PUBLIC_BASE_URL}
+      public-base-url: ${AWS_S3_PUBLIC_BASE_URL:}
   einvoice:
     public-key-location: ${EINVOICE_PUBLIC_KEY_LOCATION}
 

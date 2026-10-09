@@ -13,7 +13,7 @@ public class ProductionEnvironmentValidator implements EnvironmentPostProcessor,
     private static final List<String> REQUIRED = List.of(
             "spring.datasource.url", "spring.datasource.username", "spring.datasource.password",
             "app.frontend-url", "app.security.jwt-secret", "app.storage.s3.bucket",
-            "app.storage.s3.public-base-url", "app.einvoice.public-key-location",
+            "app.storage.provider", "app.einvoice.public-key-location",
             "irp.encryption.secret-key"
     );
 

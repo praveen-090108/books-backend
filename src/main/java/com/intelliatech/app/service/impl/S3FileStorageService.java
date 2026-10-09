@@ -2,13 +2,13 @@ package com.intelliatech.app.service.impl;
 
 import com.intelliatech.app.config.S3StorageProperties;
 import com.intelliatech.app.config.LocalStorageProperties;
+import com.intelliatech.app.config.StorageProperties;
 import com.intelliatech.app.dto.response.FileUploadResponse;
 import com.intelliatech.app.service.FileStorageService;
 import com.intelliatech.app.util.S3StorageUtil;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
@@ -58,6 +58,7 @@ public class S3FileStorageService implements FileStorageService {
     );
 
     private final S3StorageProperties properties;
+    private final StorageProperties storageProperties;
     private final LocalStorageProperties localProperties;
     private final S3StorageUtil s3StorageUtil;
 
@@ -66,7 +67,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_LOGO_SIZE_BYTES, ALLOWED_CONTENT_TYPES,
                 "Logo file is required.", "Logo file size must be 2 MB or less.",
                 "Only PNG, JPG, SVG, and WEBP logo files are supported.");
-        return upload(file, "branding/logo/", "logo", "Unable to upload branding logo");
+        return upload(file, "branding/logo/", "logo");
     }
 
     @Override
@@ -74,7 +75,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_PAYMENT_ATTACHMENT_SIZE_BYTES, ALLOWED_PAYMENT_ATTACHMENT_TYPES,
                 "Payment attachment is required.", "Payment attachment size must be 10 MB or less.",
                 "Only PDF, PNG, and JPG payment attachments are supported.");
-        return upload(file, "payments/attachments/", "payment-attachment", "Unable to read payment attachment");
+        return upload(file, "payments/attachments/", "payment-attachment");
     }
 
     @Override
@@ -82,8 +83,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_PAYMENT_ATTACHMENT_SIZE_BYTES, ALLOWED_PURCHASE_ORDER_ATTACHMENT_TYPES,
                 "Purchase order attachment is required.", "Purchase order attachment size must be 10 MB or less.",
                 "Only PDF, PNG, JPG, DOC, DOCX, XLS, and XLSX purchase order attachments are supported.");
-        return upload(file, "purchase-orders/attachments/", "purchase-order-attachment",
-                "Unable to read purchase order attachment");
+        return upload(file, "purchase-orders/attachments/", "purchase-order-attachment");
     }
 
     @Override
@@ -91,7 +91,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_PAYMENT_ATTACHMENT_SIZE_BYTES, ALLOWED_PURCHASE_ORDER_ATTACHMENT_TYPES,
                 "Bill attachment is required.", "Bill attachment size must be 10 MB or less.",
                 "Only PDF, PNG, JPG, DOC, DOCX, XLS, and XLSX Bill attachments are supported.");
-        return upload(file, "bills/attachments/", "bill-attachment", "Unable to read Bill attachment");
+        return upload(file, "bills/attachments/", "bill-attachment");
     }
 
     @Override
@@ -99,7 +99,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_PAYMENT_ATTACHMENT_SIZE_BYTES, ALLOWED_PURCHASE_ORDER_ATTACHMENT_TYPES,
                 "Candidate profile is required.", "Candidate profile size must be 10 MB or less.",
                 "Only PDF, PNG, JPG, DOC, DOCX, XLS, and XLSX candidate profiles are supported.");
-        return upload(file, "leads/profiles/", "candidate-profile", "Unable to upload candidate profile");
+        return upload(file, "leads/profiles/", "candidate-profile");
     }
 
     @Override
@@ -107,7 +107,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_PAYMENT_ATTACHMENT_SIZE_BYTES, ALLOWED_PURCHASE_ORDER_ATTACHMENT_TYPES,
                 "Customer attachment is required.", "Customer attachment size must be 10 MB or less.",
                 "Only PDF, PNG, JPG, DOC, DOCX, XLS, and XLSX customer attachments are supported.");
-        return upload(file, "customers/attachments/", "customer-attachment", "Unable to upload customer attachment");
+        return upload(file, "customers/attachments/", "customer-attachment");
     }
 
     @Override
@@ -116,8 +116,7 @@ public class S3FileStorageService implements FileStorageService {
                 "Project document is required.", "Project document size must be 10 MB or less.",
                 "Unsupported project document type.");
         String safeType = "fixedCost".equals(projectType) ? "fixed-cost" : "staffing";
-        return upload(file, "projects/" + safeType + "/" + projectId + "/documents/",
-                "project-document", "Unable to upload project document");
+        return upload(file, "projects/" + safeType + "/" + projectId + "/documents/", "project-document");
     }
 
     @Override
@@ -125,19 +124,23 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_ASSET_IMAGE_SIZE_BYTES, ALLOWED_ASSET_IMAGE_TYPES,
                 "Asset image is required.", "Asset image size must be 10 MB or less.",
                 "Only PNG, JPG, JPEG, and WEBP asset images are supported.");
-        if (!properties.complete()) {
-            throw new IllegalStateException("Asset image storage is not configured. Set AWS_S3_BUCKET and AWS_REGION.");
-        }
-        return upload(file, "assets/" + assetId + "/images/", "asset-image",
-                "Unable to upload asset image to S3");
+        return upload(file, "assets/" + assetId + "/images/", "asset-image");
     }
 
     @Override
     public StoredFile download(String key) {
-        if (properties.active()) {
-            var object = s3StorageUtil.download(key);
+        if (!isS3Key(key) && legacyLocalFileExists(key)) {
+            return downloadLegacyLocalFile(key);
+        }
+        String resolvedKey = isS3Key(key) ? key : normalizedPrefix() + key;
+        if (StringUtils.hasText(resolvedKey)) {
+            var object = s3StorageUtil.download(resolvedKey);
             return new StoredFile(object.content(), object.contentType());
         }
+        throw new IllegalArgumentException("File does not exist.");
+    }
+
+    private StoredFile downloadLegacyLocalFile(String key) {
         if (!localProperties.enabled() || !StringUtils.hasText(localProperties.directory())) {
             throw new IllegalStateException("File storage is not configured.");
         }
@@ -153,53 +156,31 @@ public class S3FileStorageService implements FileStorageService {
         }
     }
 
-    private FileUploadResponse upload(MultipartFile file, String folder, String fallbackName, String errorMessage) {
+    private FileUploadResponse upload(MultipartFile file, String folder, String fallbackName) {
+        if (!storageProperties.usesS3()) {
+            throw new IllegalStateException("Unsupported file storage provider. Configure app.storage.provider=s3.");
+        }
         String originalName = StringUtils.cleanPath(file.getOriginalFilename() == null ? fallbackName : file.getOriginalFilename());
         String extension = extension(originalName);
         String relativeKey = folder + UUID.randomUUID() + extension;
         String key = normalizedPrefix() + relativeKey;
         String contentType = file.getContentType();
 
-        if (!properties.active()) {
-            return uploadLocally(file, relativeKey, originalName, contentType, errorMessage);
-        }
-        return s3StorageUtil.upload(file, key, originalName, contentType, errorMessage);
+        return s3StorageUtil.upload(file, key, originalName, contentType);
     }
 
-    private FileUploadResponse uploadLocally(
-            MultipartFile file,
-            String key,
-            String originalName,
-            String contentType,
-            String errorMessage
-    ) {
-        if (!localProperties.enabled() || !StringUtils.hasText(localProperties.directory())) {
-            throw new IllegalStateException(
-                    "File storage is not configured. Enable either S3 storage or local storage."
-            );
-        }
-        try {
-            Path root = Path.of(localProperties.directory()).toAbsolutePath().normalize();
-            Path destination = root.resolve(key).normalize();
-            if (!destination.startsWith(root)) {
-                throw new IllegalArgumentException("Invalid upload path.");
-            }
-            Files.createDirectories(destination.getParent());
-            Files.copy(file.getInputStream(), destination, StandardCopyOption.REPLACE_EXISTING);
-            return new FileUploadResponse(key, localPublicUrl(key), originalName, contentType, file.getSize());
-        } catch (IOException exception) {
-            throw new IllegalStateException(errorMessage, exception);
-        }
+    private boolean isS3Key(String key) {
+        String prefix = normalizedPrefix();
+        return StringUtils.hasText(prefix) && key != null && key.startsWith(prefix);
     }
 
-    private String localPublicUrl(String key) {
-        String baseUrl = StringUtils.hasText(localProperties.publicBaseUrl())
-                ? localProperties.publicBaseUrl().trim()
-                : "http://127.0.0.1:8080/uploads";
-        while (baseUrl.endsWith("/")) {
-            baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+    private boolean legacyLocalFileExists(String key) {
+        if (!localProperties.enabled() || !StringUtils.hasText(localProperties.directory()) || !StringUtils.hasText(key)) {
+            return false;
         }
-        return baseUrl + "/" + key;
+        Path root = Path.of(localProperties.directory()).toAbsolutePath().normalize();
+        Path source = root.resolve(key).normalize();
+        return source.startsWith(root) && Files.isRegularFile(source);
     }
 
     private void validateFile(

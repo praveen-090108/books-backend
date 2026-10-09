@@ -1,10 +1,8 @@
 package com.intelliatech.app.controller;
 
-import com.intelliatech.app.config.S3StorageProperties;
 import com.intelliatech.app.entity.BusinessRecord;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.service.FileStorageService;
-import com.intelliatech.app.util.S3StorageUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.regex.Pattern;
@@ -18,8 +16,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
 @RestController
 @RequiredArgsConstructor
@@ -27,9 +23,7 @@ public class BrandingAssetController {
 
     private static final Pattern SAFE_FILE_NAME = Pattern.compile("[A-Za-z0-9._-]+");
 
-    private final S3StorageUtil s3StorageUtil;
     private final FileStorageService fileStorageService;
-    private final S3StorageProperties properties;
     private final BusinessRecordRepository businessRecordRepository;
     private final ObjectMapper objectMapper;
 
@@ -53,17 +47,9 @@ public class BrandingAssetController {
         }
         String relativeKey = "branding/logo/" + fileName;
         try {
-            byte[] content;
-            String storedContentType;
-            if (properties.active()) {
-                S3StorageUtil.StoredObject object = s3StorageUtil.download(normalizedPrefix() + relativeKey);
-                content = object.content();
-                storedContentType = object.contentType();
-            } else {
-                FileStorageService.StoredFile object = fileStorageService.download(relativeKey);
-                content = object.content();
-                storedContentType = object.contentType();
-            }
+            FileStorageService.StoredFile object = fileStorageService.download(relativeKey);
+            byte[] content = object.content();
+            String storedContentType = object.contentType();
             MediaType contentType = StringUtils.hasText(storedContentType)
                     ? MediaType.parseMediaType(storedContentType)
                     : MediaType.APPLICATION_OCTET_STREAM;
@@ -72,24 +58,9 @@ public class BrandingAssetController {
                     .cacheControl(CacheControl.noCache())
                     .contentType(contentType)
                     .body(content);
-        } catch (NoSuchKeyException exception) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-        } catch (S3Exception exception) {
-            if (exception.statusCode() == HttpStatus.NOT_FOUND.value()) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND);
-            }
-            throw exception;
-        } catch (IllegalArgumentException | IllegalStateException exception) {
+        } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
-    }
-
-    private String normalizedPrefix() {
-        if (!StringUtils.hasText(properties.keyPrefix())) {
-            return "";
-        }
-        String prefix = properties.keyPrefix().trim();
-        return prefix.endsWith("/") ? prefix : prefix + "/";
     }
 
     private String readLogoUrl(String notes) {

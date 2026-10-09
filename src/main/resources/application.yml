@@ -24,9 +24,7 @@ server:
 app:
   request-timeout-seconds: 15
   storage:
-    s3:
-      region: ap-south-1
-      key-prefix: intelliatech-books
+    provider: s3
 
 springdoc:
   swagger-ui:

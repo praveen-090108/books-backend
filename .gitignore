@@ -1,4 +1,6 @@
 target/
+build/
+logs/
 uploads/
 .env
 .env.*
@@ -8,4 +10,9 @@ uploads/
 *.class
 *.jar
 *.war
+.idea/
+.vscode/
+*.iml
+src/main/resources/application-local.yml
+config/application-prod-secrets.yml
 database/*_private_data.sql

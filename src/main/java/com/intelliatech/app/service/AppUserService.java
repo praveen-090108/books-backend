@@ -13,13 +13,14 @@ import jakarta.persistence.criteria.Predicate;
 import java.util.ArrayList;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-@Service @RequiredArgsConstructor
+@Service @RequiredArgsConstructor @Slf4j
 public class AppUserService {
     private final AppUserRepository repository;
     private final BusinessRecordRepository businessRecords;
@@ -117,7 +118,11 @@ public class AppUserService {
             List<String> result = new ArrayList<>();
             if (values != null && values.isArray()) values.forEach(item -> result.add(item.asText()));
             return result;
-        } catch (Exception ignored) { return fallbackAccess(roleName); }
+        } catch (Exception exception) {
+            log.warn("Invalid stored role permissions; using restricted fallback role={} exception={}",
+                    normalizedRole(roleName), exception.getClass().getSimpleName());
+            return fallbackAccess(roleName);
+        }
     }
     private List<String> fallbackAccess(String roleName) {
         if (roleName != null && roleName.toLowerCase().contains("admin")) return List.of("*");

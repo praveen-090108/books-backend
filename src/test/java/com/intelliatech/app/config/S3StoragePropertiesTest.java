@@ -10,7 +10,6 @@ class S3StoragePropertiesTest {
     void bucketAutomaticallyActivatesS3ForIamRoleDeployments() {
         var properties = new S3StorageProperties(false, "company-files", "ap-south-1",
                 "", "", "intelliatech-books", "");
-
         assertThat(properties.active()).isTrue();
         assertThat(properties.complete()).isTrue();
     }
@@ -19,7 +18,6 @@ class S3StoragePropertiesTest {
     void missingBucketDoesNotSelectS3() {
         var properties = new S3StorageProperties(false, "", "ap-south-1",
                 "", "", "intelliatech-books", "");
-
         assertThat(properties.active()).isFalse();
         assertThat(properties.complete()).isFalse();
     }

@@ -13,11 +13,6 @@ public record S3StorageProperties(
         String keyPrefix,
         String publicBaseUrl
 ) {
-    /**
-     * A bucket is sufficient to select S3 in AWS because the SDK can obtain
-     * credentials from the EC2/ECS/Lambda IAM role. The explicit flag remains
-     * supported for existing deployments.
-     */
     public boolean active() {
         return enabled || StringUtils.hasText(bucket);
     }

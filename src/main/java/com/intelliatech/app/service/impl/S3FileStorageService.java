@@ -66,13 +66,7 @@ public class S3FileStorageService implements FileStorageService {
         validateFile(file, MAX_LOGO_SIZE_BYTES, ALLOWED_CONTENT_TYPES,
                 "Logo file is required.", "Logo file size must be 2 MB or less.",
                 "Only PNG, JPG, SVG, and WEBP logo files are supported.");
-        if (!properties.complete()) {
-            throw new IllegalStateException(
-                    "Branding logo storage is not configured. Set AWS_S3_BUCKET and AWS_REGION; " +
-                    "then grant the backend IAM role permission to upload to that bucket."
-            );
-        }
-        return upload(file, "branding/logo/", "logo", "Unable to upload branding logo to S3");
+        return upload(file, "branding/logo/", "logo", "Unable to upload branding logo");
     }
 
     @Override

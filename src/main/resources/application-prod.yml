@@ -1,0 +1,53 @@
+spring:
+  config:
+    import: optional:file:./config/application-prod-secrets.yml
+  datasource:
+    url: jdbc:mysql://${PROD_DB_HOST:production-db-host.invalid}:3306/${PROD_DB_NAME:intelliatech_books_prod}?useSSL=true&serverTimezone=UTC
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      connection-timeout: 10000
+      validation-timeout: 5000
+  jpa:
+    show-sql: false
+
+server:
+  address: 0.0.0.0
+
+app:
+  environment: production
+  frontend-url: ${PROD_FRONTEND_URL}
+  cors:
+    allowed-origins: ${PROD_FRONTEND_URL}
+  security:
+    jwt-secret: ${JWT_SECRET}
+    jwt-expiration-minutes: 60
+  bootstrap:
+    default-admin-enabled: false
+  storage:
+    local:
+      enabled: false
+      directory: ./uploads
+      public-base-url: ''
+    s3:
+      enabled: true
+      bucket: ${AWS_S3_BUCKET}
+      access-key-id: ${AWS_ACCESS_KEY_ID:}
+      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
+      public-base-url: ${AWS_S3_PUBLIC_BASE_URL}
+  einvoice:
+    public-key-location: ${EINVOICE_PUBLIC_KEY_LOCATION}
+
+irp:
+  encryption:
+    secret-key: ${IRP_CREDENTIAL_ENCRYPTION_KEY}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+logging:
+  level:
+    com.intelliatech.app: INFO

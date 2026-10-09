@@ -1,13 +1,8 @@
 spring:
   application:
     name: intelliatech-books
-  datasource:
-    url: ${DB_URL:jdbc:mysql://127.0.0.1:3306/intelliatech_books?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:root}
-    hikari:
-      connection-timeout: 10000
-      validation-timeout: 5000
+  profiles:
+    default: sandbox
   jpa:
     hibernate:
       ddl-auto: validate
@@ -17,33 +12,21 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
 
 server:
-  address: ${SERVER_ADDRESS:127.0.0.1}
-  port: ${SERVER_PORT:8080}
+  port: 8080
   shutdown: graceful
 
 app:
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
-  security:
-    jwt-secret: change-this-development-secret-key
-    jwt-expiration-minutes: 60
+  request-timeout-seconds: 15
   storage:
-    local:
-      enabled: ${LOCAL_STORAGE_ENABLED:true}
-      directory: ${LOCAL_STORAGE_DIRECTORY:./uploads}
-      public-base-url: ${LOCAL_STORAGE_PUBLIC_BASE_URL:http://127.0.0.1:8080/uploads}
     s3:
-      enabled: ${AWS_S3_ENABLED:false}
-      bucket: ${AWS_S3_BUCKET:}
-      region: ${AWS_REGION:ap-south-1}
-      access-key-id: ${AWS_ACCESS_KEY_ID:}
-      secret-access-key: ${AWS_SECRET_ACCESS_KEY:}
-      key-prefix: ${AWS_S3_KEY_PREFIX:intelliatech-books}
-      public-base-url: ${AWS_S3_PUBLIC_BASE_URL:}
-  einvoice:
-    public-key-location: ${EINVOICE_PUBLIC_KEY_LOCATION:classpath:einvoice/EY_IRP_Sandbox_auth_public_key_2027.pem}
+      region: ap-south-1
+      key-prefix: intelliatech-books
 
 springdoc:
   swagger-ui:
@@ -52,5 +35,4 @@ springdoc:
 logging:
   level:
     root: INFO
-    com.intelliatech.app: INFO
     org.flywaydb: INFO

@@ -13,6 +13,7 @@ import com.intelliatech.app.service.IrpCryptoService;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ import org.springframework.web.util.UriUtils;
 import java.nio.charset.StandardCharsets;
 
 @Service
+@Slf4j
 public class EyIrpClient implements IrpClient {
 
     private static final Long COMPANY_ID = 1L;
@@ -48,6 +50,7 @@ public class EyIrpClient implements IrpClient {
 
     @Override
     public IrpGenerateResult generateIrn(JsonNode invoicePayload) {
+        long started = System.nanoTime();
         IrpCredentials credentials = configurations.getActiveCredentials(COMPANY_ID);
         IrpAuthenticationToken token = authenticationService.currentToken(credentials.environment());
         try {
@@ -65,11 +68,17 @@ public class EyIrpClient implements IrpClient {
                     .body(encryptedBody(encrypted))
                     .retrieve()
                     .body(JsonNode.class);
-            return parseResponse(response, token, 200);
+            IrpGenerateResult result = parseResponse(response, token, 200);
+            logResult("generate", credentials.environment(), result, started);
+            return result;
         } catch (RestClientResponseException exception) {
             JsonNode response = parseBody(exception.getResponseBodyAsString());
-            return parseResponse(response, token, exception.getStatusCode().value());
+            IrpGenerateResult result = parseResponse(response, token, exception.getStatusCode().value());
+            logResult("generate", credentials.environment(), result, started);
+            return result;
         } catch (Exception exception) {
+            log.error("IRP operation failed operation=generate environment={} durationMs={} exception={}",
+                    credentials.environment(), elapsedMs(started), exception.getClass().getSimpleName(), exception);
             return new IrpGenerateResult(false, 0, null, null, "IRP_TRANSPORT_ERROR", safeMessage(exception));
         }
     }
@@ -81,6 +90,7 @@ public class EyIrpClient implements IrpClient {
 
     @Override
     public IrpGenerateResult cancelIrn(String irn, String reasonCode, String remarks, IrpEnvironment environment) {
+        long started = System.nanoTime();
         IrpCredentials credentials = configurations.getDecryptedCredentials(COMPANY_ID, environment);
         IrpAuthenticationToken token = authenticationService.currentToken(environment);
         try {
@@ -97,10 +107,16 @@ public class EyIrpClient implements IrpClient {
                     .headers(headers -> applyAuthenticatedHeaders(headers, token, credentials))
                     .body(encryptedBody(encrypted))
                     .retrieve().body(JsonNode.class);
-            return parseResponse(response, token, 200);
+            IrpGenerateResult result = parseResponse(response, token, 200);
+            logResult("cancel", environment, result, started);
+            return result;
         } catch (RestClientResponseException exception) {
-            return parseResponse(parseBody(exception.getResponseBodyAsString()), token, exception.getStatusCode().value());
+            IrpGenerateResult result = parseResponse(parseBody(exception.getResponseBodyAsString()), token, exception.getStatusCode().value());
+            logResult("cancel", environment, result, started);
+            return result;
         } catch (Exception exception) {
+            log.error("IRP operation failed operation=cancel environment={} durationMs={} exception={}",
+                    environment, elapsedMs(started), exception.getClass().getSimpleName(), exception);
             return new IrpGenerateResult(false, 0, null, null, "IRP_TRANSPORT_ERROR", safeMessage(exception));
         }
     }
@@ -112,6 +128,7 @@ public class EyIrpClient implements IrpClient {
 
     @Override
     public IrpGenerateResult getIrn(String irn, IrpEnvironment environment) {
+        long started = System.nanoTime();
         IrpCredentials credentials = configurations.getDecryptedCredentials(COMPANY_ID, environment);
         IrpAuthenticationToken token = authenticationService.currentToken(environment);
         try {
@@ -121,10 +138,16 @@ public class EyIrpClient implements IrpClient {
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(headers -> applyAuthenticatedHeaders(headers, token, credentials))
                     .retrieve().body(JsonNode.class);
-            return parseResponse(response, token, 200);
+            IrpGenerateResult result = parseResponse(response, token, 200);
+            logResult("get", environment, result, started);
+            return result;
         } catch (RestClientResponseException exception) {
-            return parseResponse(parseBody(exception.getResponseBodyAsString()), token, exception.getStatusCode().value());
+            IrpGenerateResult result = parseResponse(parseBody(exception.getResponseBodyAsString()), token, exception.getStatusCode().value());
+            logResult("get", environment, result, started);
+            return result;
         } catch (Exception exception) {
+            log.error("IRP operation failed operation=get environment={} durationMs={} exception={}",
+                    environment, elapsedMs(started), exception.getClass().getSimpleName(), exception);
             return new IrpGenerateResult(false, 0, null, null, "IRP_TRANSPORT_ERROR", safeMessage(exception));
         }
     }
@@ -179,7 +202,9 @@ public class EyIrpClient implements IrpClient {
     private JsonNode parseBody(String body) {
         try {
             return StringUtils.hasText(body) ? objectMapper.readTree(body) : null;
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            log.warn("IRP returned a response body that could not be parsed exception={}",
+                    exception.getClass().getSimpleName());
             return null;
         }
     }
@@ -195,5 +220,19 @@ public class EyIrpClient implements IrpClient {
 
     private String safeMessage(Exception exception) {
         return StringUtils.hasText(exception.getMessage()) ? exception.getMessage() : exception.getClass().getSimpleName();
+    }
+
+    private void logResult(String operation, IrpEnvironment environment, IrpGenerateResult result, long started) {
+        if (result.success()) {
+            log.info("IRP operation completed operation={} environment={} httpStatus={} durationMs={}",
+                    operation, environment, result.httpStatus(), elapsedMs(started));
+        } else {
+            log.warn("IRP operation rejected operation={} environment={} httpStatus={} errorCode={} durationMs={}",
+                    operation, environment, result.httpStatus(), result.errorCode(), elapsedMs(started));
+        }
+    }
+
+    private long elapsedMs(long started) {
+        return (System.nanoTime() - started) / 1_000_000;
     }
 }

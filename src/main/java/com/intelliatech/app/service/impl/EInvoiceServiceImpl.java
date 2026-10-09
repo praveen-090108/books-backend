@@ -32,12 +32,14 @@ import java.util.Base64;
 import java.util.Map;
 import javax.imageio.ImageIO;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EInvoiceServiceImpl implements EInvoiceService {
 
     private static final DateTimeFormatter ACK_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -350,7 +352,8 @@ public class EInvoiceServiceImpl implements EInvoiceService {
             var output = new ByteArrayOutputStream();
             ImageIO.write(image, "png", output);
             return "data:image/png;base64," + Base64.getEncoder().encodeToString(output.toByteArray());
-        } catch (Exception ignored) {
+        } catch (Exception exception) {
+            log.error("Unable to render e-invoice QR code exception={}", exception.getClass().getSimpleName(), exception);
             return null;
         }
     }

@@ -144,6 +144,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <mainClass>com.intelliatech.app.AppApplication</mainClass>
+                    <profiles>${spring-boot.run.profiles}</profiles>
                     <excludes>
                         <exclude>
                             <groupId>org.projectlombok</groupId>
@@ -154,4 +155,16 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>sandbox</id>
+            <activation><activeByDefault>true</activeByDefault></activation>
+            <properties><spring-boot.run.profiles>sandbox</spring-boot.run.profiles></properties>
+        </profile>
+        <profile>
+            <id>prod</id>
+            <properties><spring-boot.run.profiles>prod</spring-boot.run.profiles></properties>
+        </profile>
+    </profiles>
 </project>

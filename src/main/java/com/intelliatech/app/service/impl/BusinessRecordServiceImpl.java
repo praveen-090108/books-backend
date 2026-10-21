@@ -10,6 +10,7 @@ import com.intelliatech.app.mapper.BusinessRecordMapper;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.service.DocumentNumberPreferenceService;
 import com.intelliatech.app.service.InvoiceLifecycleService;
+import com.intelliatech.app.service.ResourceLifecycleService;
 import com.intelliatech.app.security.CurrentUserService;
 import com.intelliatech.app.security.DataScope;
 import com.intelliatech.app.security.DataScopeService;
@@ -48,6 +49,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
     private final CurrentUserService currentUsers;
     private final DataScopeService dataScopes;
     private final JdbcTemplate jdbc;
+    private final ResourceLifecycleService resourceLifecycleService;
 
     @Override
     @Transactional
@@ -93,6 +95,8 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
         entity.setCreatedBy(currentUserId);
         entity.setUpdatedBy(currentUserId);
         BusinessRecord saved = repository.save(entity);
+        resourceLifecycleService.initializeResource(saved);
+        resourceLifecycleService.synchronizeStaffingAllocation(saved);
         syncInvoiceProject(module, type, saved.getId(), invoiceProject);
         syncFixedCostTeam(module, type, saved.getId(), effectiveRequest.notes(), currentUserId);
         if (isInvoice(module, type)) invoiceLifecycleService.initializeDraft(saved);
@@ -117,11 +121,15 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
             effectiveRequest = invoiceUpdateRequest(request, record);
         }
         BusinessRecord invoiceProject = validateInvoiceProject(module, type, effectiveRequest, id, false);
+        if ("resources".equalsIgnoreCase(module) && "resources".equalsIgnoreCase(type)) {
+            resourceLifecycleService.assertSalaryUnchanged(record, effectiveRequest.notes());
+        }
         mapper.copy(effectiveRequest, record);
         applyResourceFields(module, type, effectiveRequest, record, id);
         validateFixedCostProject(module, type, effectiveRequest, record, id);
         record.setUpdatedBy(currentUsers.getCurrentUserId());
         BusinessRecord saved = repository.save(record);
+        resourceLifecycleService.synchronizeStaffingAllocation(saved);
         syncInvoiceProject(module, type, saved.getId(), invoiceProject);
         syncFixedCostTeam(module, type, saved.getId(), effectiveRequest.notes(), currentUsers.getCurrentUserId());
         if (isInvoice(module, type)) invoiceLifecycleService.refreshOverdueStatus(id);
@@ -413,6 +421,14 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found"));
         validateAccess(module, type, record);
         if (isInvoice(module, type)) invoiceLifecycleService.assertCanDelete(id);
+        if ("projects".equalsIgnoreCase(module)
+                && resourceLifecycleService.closeProjectAllocations(id, LocalDate.now(), "Project closed instead of deleting allocation history")) {
+            record.setStatus("staffing".equalsIgnoreCase(type) ? "Close" : "Completed");
+            record.setClosedDate(record.getClosedDate() == null ? LocalDate.now() : record.getClosedDate());
+            record.setUpdatedBy(currentUsers.getCurrentUserId());
+            repository.save(record);
+            return;
+        }
         repository.delete(record);
     }
 

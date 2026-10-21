@@ -118,6 +118,27 @@ VITE_API_BASE_URL=https://<backend-host>/api pnpm build
 aws s3 sync dist/ s3://<frontend-bucket>/ --delete
 ```
 
+For direct S3 website hosting, configure the React single-page application
+fallback after creating the bucket. This makes hard refreshes of `/login`,
+`/resources/...`, `/project/...`, and other client-side routes return the React
+entry page instead of S3 `NoSuchKey`:
+
+```bash
+aws s3api put-bucket-website \
+  --bucket intelliatech-books-frontend \
+  --website-configuration file://../frontend/deployment/s3-website.json
+```
+
+Verify the applied configuration:
+
+```bash
+aws s3api get-bucket-website --bucket intelliatech-books-frontend
+```
+
+The result must contain `IndexDocument.Suffix` and `ErrorDocument.Key`, both
+set to `index.html`. This configuration changes routing only; it does not make
+private application documents public.
+
 Only use `--delete` after confirming the exact frontend bucket and reviewing a
 dry run with `aws s3 sync dist/ s3://<frontend-bucket>/ --delete --dryrun`.
 Configure S3/CloudFront SPA routing so unknown routes return `index.html`. If a

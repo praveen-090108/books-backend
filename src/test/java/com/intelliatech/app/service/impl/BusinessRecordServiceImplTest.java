@@ -13,6 +13,7 @@ import com.intelliatech.app.mapper.BusinessRecordMapper;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.service.DocumentNumberPreferenceService;
 import com.intelliatech.app.service.InvoiceLifecycleService;
+import com.intelliatech.app.service.ResourceLifecycleService;
 import com.intelliatech.app.security.CurrentUserService;
 import com.intelliatech.app.security.DataScopeService;
 import java.math.BigDecimal;
@@ -39,6 +40,7 @@ class BusinessRecordServiceImplTest {
     @Mock private CurrentUserService currentUserService;
     @Mock private DataScopeService dataScopeService;
     @Mock private JdbcTemplate jdbcTemplate;
+    @Mock private ResourceLifecycleService resourceLifecycleService;
 
     private BusinessRecordServiceImpl service;
 
@@ -52,7 +54,8 @@ class BusinessRecordServiceImplTest {
                 new ObjectMapper(),
                 currentUserService,
                 dataScopeService,
-                jdbcTemplate
+                jdbcTemplate,
+                resourceLifecycleService
         );
         when(currentUserService.getCurrentUserId()).thenReturn(1L);
     }

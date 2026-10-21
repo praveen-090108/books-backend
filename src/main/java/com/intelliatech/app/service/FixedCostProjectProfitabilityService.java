@@ -27,6 +27,7 @@ public class FixedCostProjectProfitabilityService {
     private final BusinessRecordRepository records;
     private final DataScopeService scopes;
     private final ObjectMapper json;
+    private final ResourceLifecycleService lifecycles;
 
     public record ResourceCost(Long assignmentId, Long employeeId, String employeeName,
             BigDecimal monthlySalary, String salaryCurrency, LocalDate activeFrom,
@@ -114,13 +115,15 @@ public class FixedCostProjectProfitabilityService {
             int activeDays = (int) (to.toEpochDay() - from.toEpochDay() + 1);
             int daysInMonth = month.lengthOfMonth();
             BigDecimal proration = BigDecimal.valueOf(activeDays).divide(BigDecimal.valueOf(daysInMonth), SCALE, RoundingMode.HALF_UP);
-            BigDecimal original = assignment.salary().multiply(proration);
+            BigDecimal effectiveSalary = lifecycles.salaryAt(assignment.employeeId(), to);
+            if (effectiveSalary == null) effectiveSalary = assignment.salary();
+            BigDecimal original = effectiveSalary.multiply(proration);
             BigDecimal rate = exchangeRate(assignment.salaryCurrency(), projectCurrency, to);
             BigDecimal converted = original.multiply(rate);
             BigDecimal inrRate = exchangeRate(assignment.salaryCurrency(), "INR", to);
             BigDecimal costInInr = original.multiply(inrRate);
             result.add(new ResourceCost(assignment.id(), assignment.employeeId(), assignment.employeeName(),
-                    money(assignment.salary()), assignment.salaryCurrency(), from, to, activeDays, daysInMonth,
+                    money(effectiveSalary), assignment.salaryCurrency(), from, to, activeDays, daysInMonth,
                     proration.setScale(4, RoundingMode.HALF_UP), money(original), rate.setScale(6, RoundingMode.HALF_UP), money(converted),
                     inrRate.setScale(6, RoundingMode.HALF_UP), money(costInInr)));
         }
@@ -132,7 +135,7 @@ public class FixedCostProjectProfitabilityService {
                 "COALESCE(CAST(JSON_UNQUOTE(JSON_EXTRACT(e.notes,'$.monthlySalary')) AS DECIMAL(14,2)),0) salary," +
                 "COALESCE(NULLIF(JSON_UNQUOTE(JSON_EXTRACT(e.notes,'$.salaryCurrency')),'null'),'INR') salary_currency," +
                 "t.added_date,t.removed_date FROM fixed_cost_project_team_member t JOIN business_records e ON e.id=t.employee_id " +
-                "WHERE t.project_id=? AND t.assignment_status='ACTIVE' AND LOWER(e.status)='active' ORDER BY t.added_date,t.id";
+                "WHERE t.project_id=? ORDER BY t.added_date,t.id";
         return jdbc.query(sql, (rs, row) -> new Assignment(rs.getLong("id"), rs.getLong("employee_id"),
                 rs.getString("party_name"), amount(rs.getBigDecimal("salary")), rs.getString("salary_currency"),
                 rs.getObject("added_date", LocalDate.class), rs.getObject("removed_date", LocalDate.class)), projectId);

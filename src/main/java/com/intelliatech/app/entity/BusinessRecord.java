@@ -68,6 +68,9 @@ public class BusinessRecord {
     @Column(nullable = false, length = 64)
     private String status;
 
+    @Column(length = 24)
+    private String employmentStatus;
+
     @Column(length = 64)
     private String secondaryStatus;
 
@@ -87,6 +90,18 @@ public class BusinessRecord {
     private LocalDate dueDate;
 
     private LocalDate closedDate;
+
+    private LocalDate resignationDate;
+
+    private LocalDate noticeStartDate;
+
+    private LocalDate lastWorkingDay;
+
+    @Column(length = 500)
+    private String resignationReason;
+
+    @Column(length = 1000)
+    private String employmentRemarks;
 
     @Column(length = 64)
     private String referenceNumber;

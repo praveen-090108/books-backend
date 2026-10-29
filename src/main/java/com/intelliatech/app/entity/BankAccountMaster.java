@@ -14,7 +14,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class BankAccountMaster {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 160) private String accountName;
     @Column(nullable = false, length = 160) private String bankName;
     @Column(length = 160) private String accountHolderName;

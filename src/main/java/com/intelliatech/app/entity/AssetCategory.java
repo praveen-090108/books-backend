@@ -13,7 +13,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class AssetCategory {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 24) private String categoryCode;
     @Column(nullable = false, length = 120) private String categoryName;
     @Column(columnDefinition = "TEXT") private String description;

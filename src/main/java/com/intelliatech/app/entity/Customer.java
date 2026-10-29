@@ -10,6 +10,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.Instant;
+import org.hibernate.annotations.TenantId;
 
 @Getter
 @Setter
@@ -21,10 +22,14 @@ public class Customer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @TenantId
+    @Column(name = "organization_id", nullable = false, updatable = false)
+    private Long organizationId;
+
     @Column(nullable = false, length = 120)
     private String name;
 
-    @Column(nullable = false, unique = true, length = 180)
+    @Column(nullable = false, length = 180)
     private String email;
 
     @Column(length = 40)

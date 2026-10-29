@@ -13,7 +13,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class DomainIndustryMaster {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
-    @Column(name="organization_id", nullable=false) private Long organizationId=1L;
+    @org.hibernate.annotations.TenantId @Column(name="organization_id", nullable=false) private Long organizationId;
     @Column(nullable=false, length=160) private String name;
     @Column(length=500) private String description;
     @Column(nullable=false) private boolean active=true;

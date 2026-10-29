@@ -13,7 +13,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class ItemCategoryMaster {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 120) private String categoryName;
     @Column(length = 500) private String description;
     @Column(nullable = false) private boolean active = true;

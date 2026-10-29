@@ -41,6 +41,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import com.intelliatech.app.security.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -51,7 +52,6 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class ExpenseServiceImpl implements ExpenseService {
-    private static final Long ORGANIZATION_ID = 1L;
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     private static final List<String> PAYMENT_MODES = List.of(
             "Cash", "Bank Transfer", "UPI", "Credit Card", "Debit Card", "Cheque",
@@ -77,6 +77,9 @@ public class ExpenseServiceImpl implements ExpenseService {
     private final GstTreatmentRules gstTreatmentRules;
     private final BankAccountService bankAccountService;
     private final ObjectMapper objectMapper;
+    private final TenantContext tenants;
+
+    private Long organizationId() { return tenants.requireOrganizationId(); }
 
     @Override
     @Transactional(readOnly = true)
@@ -96,7 +99,7 @@ public class ExpenseServiceImpl implements ExpenseService {
     @Override @Transactional
     public ExpenseResponse create(ExpenseRequest request) {
         Expense expense = new Expense();
-        expense.setOrganizationId(ORGANIZATION_ID);
+        expense.setOrganizationId(organizationId());
         expense.setExpenseNumber(temporaryExpenseNumber());
         copy(request, expense, null);
         Expense saved = expenseRepository.saveAndFlush(expense);
@@ -158,23 +161,23 @@ public class ExpenseServiceImpl implements ExpenseService {
                         gstTreatmentRules.requiresSourceOfSupply(entry.getKey())))
                 .toList();
         List<String> expenseAccounts = expenseAccountMasterRepository
-                .findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscAccountNameAsc(ORGANIZATION_ID).stream()
+                .findAllByOrganizationIdAndActiveTrueOrderByDisplayOrderAscAccountNameAsc(organizationId()).stream()
                 .map(ExpenseAccountMaster::getAccountName).toList();
         return new ExpenseFiltersResponse(treatments, states, taxes, expenseAccounts, PAYMENT_MODES,
                 organization.stateCode(), organization.stateName(), organization.country());
     }
 
     private void copy(ExpenseRequest request, Expense expense, Long existingId) {
-        Vendor vendor = request.vendorId() == null ? null : vendorRepository.findByIdAndOrganizationId(request.vendorId(), ORGANIZATION_ID)
+        Vendor vendor = request.vendorId() == null ? null : vendorRepository.findByIdAndOrganizationId(request.vendorId(), organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found."));
         if (vendor != null && vendor.getStatus() != VendorStatus.ACTIVE) throw new IllegalArgumentException("Only active vendors can be selected.");
         String invoiceNumber = clean(request.invoiceNumber());
         if (StringUtils.hasText(invoiceNumber) && vendor != null) {
             boolean duplicate = existingId == null
                     ? expenseRepository.existsByOrganizationIdAndVendorIdAndInvoiceNumberIgnoreCaseAndDeletedFalse(
-                            ORGANIZATION_ID, vendor.getId(), invoiceNumber)
+                            organizationId(), vendor.getId(), invoiceNumber)
                     : expenseRepository.existsByOrganizationIdAndVendorIdAndInvoiceNumberIgnoreCaseAndIdNotAndDeletedFalse(
-                            ORGANIZATION_ID, vendor.getId(), invoiceNumber, existingId);
+                            organizationId(), vendor.getId(), invoiceNumber, existingId);
             if (duplicate) throw new DuplicateResourceException("An expense with this invoice number already exists for the selected vendor.");
         }
         if (vendor != null && request.gstTreatment() == GstTreatment.REGISTERED_BUSINESS_REGULAR && !StringUtils.hasText(vendor.getGstin())) {
@@ -196,9 +199,9 @@ public class ExpenseServiceImpl implements ExpenseService {
 
         expense.setExpenseDate(request.expenseDate());
         ExpenseAccountMaster account = request.expenseAccountId() != null
-                ? expenseAccountMasterRepository.findByIdAndOrganizationId(request.expenseAccountId(), ORGANIZATION_ID)
+                ? expenseAccountMasterRepository.findByIdAndOrganizationId(request.expenseAccountId(), organizationId())
                     .orElseThrow(() -> new ResourceNotFoundException("Expense Account not found."))
-                : expenseAccountMasterRepository.findByOrganizationIdAndAccountNameIgnoreCase(ORGANIZATION_ID, clean(request.expenseAccount()))
+                : expenseAccountMasterRepository.findByOrganizationIdAndAccountNameIgnoreCase(organizationId(), clean(request.expenseAccount()))
                     .orElseThrow(() -> new ResourceNotFoundException("Expense Account not found."));
         boolean retainingInactive = existingId != null && expense.getExpenseAccountMaster() != null
                 && expense.getExpenseAccountMaster().getId().equals(account.getId());
@@ -275,7 +278,7 @@ public class ExpenseServiceImpl implements ExpenseService {
             String paymentMode, LocalDate dateFrom, LocalDate dateTo, BigDecimal amountMin, BigDecimal amountMax) {
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(builder.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(builder.equal(root.get("organizationId"), organizationId()));
             predicates.add(builder.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String term = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -318,7 +321,7 @@ public class ExpenseServiceImpl implements ExpenseService {
     }
 
     private Expense getExpense(Long id) {
-        return expenseRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return expenseRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Expense not found."));
     }
 

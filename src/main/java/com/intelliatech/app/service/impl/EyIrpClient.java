@@ -10,6 +10,7 @@ import com.intelliatech.app.service.IrpAuthenticationService;
 import com.intelliatech.app.service.IrpClient;
 import com.intelliatech.app.service.IrpConfigurationService;
 import com.intelliatech.app.service.IrpCryptoService;
+import com.intelliatech.app.security.TenantContext;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,31 +28,33 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 public class EyIrpClient implements IrpClient {
 
-    private static final Long COMPANY_ID = 1L;
     private final IrpConfigurationService configurations;
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
     private final IrpAuthenticationService authenticationService;
     private final IrpCryptoService cryptoService;
+    private final TenantContext tenants;
 
     public EyIrpClient(
             IrpConfigurationService configurations,
             @Qualifier("irpRestClient") RestClient restClient,
             ObjectMapper objectMapper,
             IrpAuthenticationService authenticationService,
-            IrpCryptoService cryptoService
+            IrpCryptoService cryptoService,
+            TenantContext tenants
     ) {
         this.configurations = configurations;
         this.restClient = restClient;
         this.objectMapper = objectMapper;
         this.authenticationService = authenticationService;
         this.cryptoService = cryptoService;
+        this.tenants = tenants;
     }
 
     @Override
     public IrpGenerateResult generateIrn(JsonNode invoicePayload) {
         long started = System.nanoTime();
-        IrpCredentials credentials = configurations.getActiveCredentials(COMPANY_ID);
+        IrpCredentials credentials = configurations.getActiveCredentials(tenants.requireOrganizationId());
         IrpAuthenticationToken token = authenticationService.currentToken(credentials.environment());
         try {
             String plainRequest = objectMapper.writeValueAsString(invoicePayload);
@@ -85,13 +88,13 @@ public class EyIrpClient implements IrpClient {
 
     @Override
     public IrpGenerateResult cancelIrn(String irn, String reasonCode, String remarks) {
-        return cancelIrn(irn, reasonCode, remarks, configurations.getActiveConfiguration(COMPANY_ID).getEnvironment());
+        return cancelIrn(irn, reasonCode, remarks, configurations.getActiveConfiguration(tenants.requireOrganizationId()).getEnvironment());
     }
 
     @Override
     public IrpGenerateResult cancelIrn(String irn, String reasonCode, String remarks, IrpEnvironment environment) {
         long started = System.nanoTime();
-        IrpCredentials credentials = configurations.getDecryptedCredentials(COMPANY_ID, environment);
+        IrpCredentials credentials = configurations.getDecryptedCredentials(tenants.requireOrganizationId(), environment);
         IrpAuthenticationToken token = authenticationService.currentToken(environment);
         try {
             JsonNode payload = objectMapper.valueToTree(Map.of(
@@ -123,13 +126,13 @@ public class EyIrpClient implements IrpClient {
 
     @Override
     public IrpGenerateResult getIrn(String irn) {
-        return getIrn(irn, configurations.getActiveConfiguration(COMPANY_ID).getEnvironment());
+        return getIrn(irn, configurations.getActiveConfiguration(tenants.requireOrganizationId()).getEnvironment());
     }
 
     @Override
     public IrpGenerateResult getIrn(String irn, IrpEnvironment environment) {
         long started = System.nanoTime();
-        IrpCredentials credentials = configurations.getDecryptedCredentials(COMPANY_ID, environment);
+        IrpCredentials credentials = configurations.getDecryptedCredentials(tenants.requireOrganizationId(), environment);
         IrpAuthenticationToken token = authenticationService.currentToken(environment);
         try {
             String url = credentials.searchUrl() + "/" + UriUtils.encodePathSegment(irn, StandardCharsets.UTF_8);

@@ -57,7 +57,7 @@ public class SecurityConfig {
 
     @Bean
     public static org.springframework.security.crypto.password.PasswordEncoder passwordEncoder() {
-        return new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder();
+        return new MigratingPasswordEncoder();
     }
 
     @Bean

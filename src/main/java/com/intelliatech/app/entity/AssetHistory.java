@@ -8,7 +8,7 @@ import lombok.Setter;
 @Getter @Setter @Entity @Table(name = "asset_history")
 public class AssetHistory {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "asset_id") private Asset asset;
     @Column(nullable = false, length = 64) private String eventType;
     @Column(length = 32) private String fromStatus;

@@ -1,10 +1,10 @@
 package com.intelliatech.app.service.impl;
 
-import com.intelliatech.app.config.S3StorageProperties;
 import com.intelliatech.app.config.LocalStorageProperties;
 import com.intelliatech.app.config.StorageProperties;
 import com.intelliatech.app.dto.response.FileUploadResponse;
 import com.intelliatech.app.service.FileStorageService;
+import com.intelliatech.app.service.IntegrationSettingsService;
 import com.intelliatech.app.util.S3StorageUtil;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -57,7 +57,7 @@ public class S3FileStorageService implements FileStorageService {
             "image/png", "image/jpeg", "image/webp"
     );
 
-    private final S3StorageProperties properties;
+    private final IntegrationSettingsService integrationSettings;
     private final StorageProperties storageProperties;
     private final LocalStorageProperties localProperties;
     private final S3StorageUtil s3StorageUtil;
@@ -203,10 +203,11 @@ public class S3FileStorageService implements FileStorageService {
     }
 
     private String normalizedPrefix() {
-        if (!StringUtils.hasText(properties.keyPrefix())) {
+        String configuredPrefix = integrationSettings.s3().keyPrefix();
+        if (!StringUtils.hasText(configuredPrefix)) {
             return "";
         }
-        String prefix = properties.keyPrefix().trim();
+        String prefix = configuredPrefix.trim();
         return prefix.endsWith("/") ? prefix : prefix + "/";
     }
 

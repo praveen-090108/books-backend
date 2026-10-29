@@ -32,6 +32,7 @@ import com.intelliatech.app.repository.PaymentReceiptRepository;
 import com.intelliatech.app.service.InvoiceLifecycleService;
 import com.intelliatech.app.service.PaymentReceivedService;
 import com.intelliatech.app.service.BankAccountService;
+import com.intelliatech.app.security.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -85,6 +86,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
     private final InvoiceLifecycleService lifecycleService;
     private final ObjectMapper objectMapper;
     private final BankAccountService bankAccountService;
+    private final TenantContext tenants;
 
     @Override
     @Transactional
@@ -135,7 +137,8 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
                 .filter(payment -> !payment.getPaymentDate().isBefore(yearStart) && !payment.getPaymentDate().isAfter(yearEnd))
                 .map(InvoicePayment::getGrossAmountReceived).map(this::money).reduce(ZERO, BigDecimal::add);
 
-        List<InvoiceLifecycle> overdue = lifecycleRepository.findAllByStatusIn(List.of(InvoiceStatus.OVERDUE)).stream()
+        List<InvoiceLifecycle> overdue = lifecycleRepository.findAllByOrganizationIdAndStatusIn(
+                        tenants.requireOrganizationId(), List.of(InvoiceStatus.OVERDUE)).stream()
                 .filter(lifecycle -> money(lifecycle.getBalanceDue()).signum() > 0)
                 .toList();
         BigDecimal overdueAmount = overdue.stream().map(InvoiceLifecycle::getBalanceDue)
@@ -375,6 +378,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
     }
 
     private void applyPaymentFields(InvoicePayment payment, PaymentReceivedRequest request, PreparedPayment prepared) {
+        payment.setOrganizationId(prepared.allocations().get(0).invoice().getOrganizationId());
         payment.setPrimaryInvoice(prepared.allocations().get(0).invoice());
         payment.setCustomerId(prepared.customer().getId());
         payment.setCustomerName(prepared.customer().getPartyName());

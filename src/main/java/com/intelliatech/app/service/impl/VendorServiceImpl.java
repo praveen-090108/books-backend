@@ -57,6 +57,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
+import com.intelliatech.app.security.TenantContext;
 import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.DataFormat;
 import org.apache.poi.ss.usermodel.FillPatternType;
@@ -76,13 +77,15 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class VendorServiceImpl implements VendorService {
 
-    private static final Long ORGANIZATION_ID = 1L;
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
     private static final Set<String> NON_TRANSACTION_TYPES = Set.of("vendors", "items", "vendorStatementEmails");
 
     private final VendorRepository vendorRepository;
     private final BusinessRecordRepository businessRecordRepository;
     private final ObjectMapper objectMapper;
+    private final TenantContext tenants;
+
+    private Long organizationId() { return tenants.requireOrganizationId(); }
 
     @Override
     @Transactional(readOnly = true)
@@ -118,11 +121,11 @@ public class VendorServiceImpl implements VendorService {
     @Override
     @Transactional
     public VendorResponse create(VendorRequest request) {
-        if (vendorRepository.existsByOrganizationIdAndVendorNameIgnoreCase(ORGANIZATION_ID, clean(request.vendorName()))) {
+        if (vendorRepository.existsByOrganizationIdAndVendorNameIgnoreCase(organizationId(), clean(request.vendorName()))) {
             throw new DuplicateResourceException("A vendor with this name already exists.");
         }
         Vendor vendor = new Vendor();
-        vendor.setOrganizationId(ORGANIZATION_ID);
+        vendor.setOrganizationId(organizationId());
         vendor.setVendorNumber(nextVendorNumber());
         copy(request, vendor, true);
         Vendor saved = vendorRepository.save(vendor);
@@ -135,7 +138,7 @@ public class VendorServiceImpl implements VendorService {
     public VendorResponse update(Long id, VendorRequest request) {
         Vendor vendor = getVendor(id);
         if (vendorRepository.existsByOrganizationIdAndVendorNameIgnoreCaseAndIdNot(
-                ORGANIZATION_ID,
+                organizationId(),
                 clean(request.vendorName()),
                 id
         )) {
@@ -161,7 +164,7 @@ public class VendorServiceImpl implements VendorService {
     public VendorResponse cloneVendor(Long id) {
         Vendor source = getVendor(id);
         Vendor clone = new Vendor();
-        clone.setOrganizationId(ORGANIZATION_ID);
+        clone.setOrganizationId(organizationId());
         clone.setVendorNumber(nextVendorNumber());
         copyVendor(source, clone);
         clone.setVendorName(uniqueCloneName(source.getVendorName()));
@@ -361,7 +364,7 @@ public class VendorServiceImpl implements VendorService {
                 logo.setAlignment(Image.LEFT);
                 logoCell.addElement(logo);
             } else {
-                Paragraph wordmark = new Paragraph("INTELLIATECH", statementFont(24, true, new Color(37, 37, 37)));
+                Paragraph wordmark = new Paragraph("IRAL", statementFont(24, true, new Color(6, 19, 74)));
                 wordmark.setSpacingBefore(22);
                 logoCell.addElement(wordmark);
             }
@@ -788,7 +791,7 @@ public class VendorServiceImpl implements VendorService {
 
     private Specification<Vendor> vendorSpecification(String search, String status, LocalDate dateFrom, LocalDate dateTo) {
         return (root, query, builder) -> {
-            Predicate predicate = builder.equal(root.get("organizationId"), ORGANIZATION_ID);
+            Predicate predicate = builder.equal(root.get("organizationId"), organizationId());
             if (StringUtils.hasText(search)) {
                 String like = "%" + search.toLowerCase(Locale.ROOT).trim() + "%";
                 predicate = builder.and(predicate, builder.or(
@@ -833,24 +836,24 @@ public class VendorServiceImpl implements VendorService {
     }
 
     private Vendor getVendor(Long id) {
-        return vendorRepository.findByIdAndOrganizationId(id, ORGANIZATION_ID)
+        return vendorRepository.findByIdAndOrganizationId(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found."));
     }
 
     private String nextVendorNumber() {
-        String latest = vendorRepository.findLatestVendorNumber(ORGANIZATION_ID);
+        String latest = vendorRepository.findLatestVendorNumber(organizationId());
         int next = 1;
         if (StringUtils.hasText(latest)) {
             try {
                 next = Integer.parseInt(latest.replaceAll("\\D+", "")) + 1;
             } catch (NumberFormatException ignored) {
-                next = (int) vendorRepository.countByOrganizationId(ORGANIZATION_ID) + 1;
+                next = (int) vendorRepository.countByOrganizationId(organizationId()) + 1;
             }
         }
         String candidate;
         do {
             candidate = "VEN-" + String.format("%04d", next++);
-        } while (vendorRepository.existsByOrganizationIdAndVendorNumber(ORGANIZATION_ID, candidate));
+        } while (vendorRepository.existsByOrganizationIdAndVendorNumber(organizationId(), candidate));
         return candidate;
     }
 
@@ -1208,7 +1211,7 @@ public class VendorServiceImpl implements VendorService {
         String base = sourceName + " Copy";
         String candidate = base;
         int suffix = 2;
-        while (vendorRepository.existsByOrganizationIdAndVendorNameIgnoreCase(ORGANIZATION_ID, candidate)) {
+        while (vendorRepository.existsByOrganizationIdAndVendorNameIgnoreCase(organizationId(), candidate)) {
             candidate = base + " " + suffix++;
         }
         return candidate;

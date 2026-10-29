@@ -9,7 +9,7 @@ import lombok.Setter;
 @Table(name = "irp_configuration", uniqueConstraints = @UniqueConstraint(name = "uk_irp_configuration_company_provider_env", columnNames = {"company_id", "provider", "environment"}))
 public class IrpConfiguration {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(name="company_id", nullable=false) private Long companyId = 1L;
+    @org.hibernate.annotations.TenantId @Column(name="company_id", nullable=false) private Long companyId;
     @Column(nullable=false, length=40) private String provider = "EY_IRP_5";
     @Enumerated(EnumType.STRING) @Column(nullable=false, length=20) private IrpEnvironment environment;
     @Column(name="api_base_url", nullable=false, length=500) private String apiBaseUrl;

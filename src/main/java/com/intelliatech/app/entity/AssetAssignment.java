@@ -9,7 +9,7 @@ import lombok.Setter;
 @Getter @Setter @Entity @Table(name = "asset_assignments")
 public class AssetAssignment {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "asset_id") private Asset asset;
     @Column(nullable = false) private Long resourceId;
     @Column(nullable = false, length = 180) private String resourceName;

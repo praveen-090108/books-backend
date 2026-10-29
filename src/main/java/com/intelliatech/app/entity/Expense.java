@@ -29,7 +29,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 public class Expense {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 64) private String expenseNumber;
     @Column(nullable = false) private LocalDate expenseDate;
     @Column(nullable = false, length = 120) private String expenseAccount;

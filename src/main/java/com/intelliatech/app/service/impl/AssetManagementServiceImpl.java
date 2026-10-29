@@ -21,6 +21,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import lombok.RequiredArgsConstructor;
+import com.intelliatech.app.security.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,7 +34,6 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class AssetManagementServiceImpl implements AssetManagementService {
-    private static final Long ORGANIZATION_ID = 1L;
     private static final BigDecimal ZERO = BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
 
     private final AssetRepository assetRepository;
@@ -45,11 +45,14 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     private final AssetDisposalRepository disposalRepository;
     private final AssetHistoryRepository historyRepository;
     private final VendorRepository vendorRepository;
+    private final TenantContext tenants;
+
+    private Long organizationId() { return tenants.requireOrganizationId(); }
 
     @Override
     @Transactional(readOnly = true)
     public Map<String, Object> dashboard(LocalDate from, LocalDate to) {
-        long total = assetRepository.countByOrganizationIdAndDeletedFalseAndDraftFalse(ORGANIZATION_ID);
+        long total = assetRepository.countByOrganizationIdAndDeletedFalseAndDraftFalse(organizationId());
         long inUse = countAsset(AssetStatus.IN_USE);
         long maintenance = countAsset(AssetStatus.UNDER_MAINTENANCE);
         long retired = countAsset(AssetStatus.RETIRED);
@@ -71,7 +74,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 .toList();
         List<Map<String, Object>> upcoming = maintenanceRepository
                 .findAllByOrganizationIdAndDueDateGreaterThanEqualAndStatusNotInAndDeletedFalseOrderByDueDate(
-                        ORGANIZATION_ID,
+                        organizationId(),
                         LocalDate.now(),
                         List.of(MaintenanceStatus.COMPLETED, MaintenanceStatus.CANCELLED),
                         Pageable.ofSize(5))
@@ -81,7 +84,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 "from", from,
                 "to", to,
                 "totalAssets", total,
-                "totalValue", money(assetRepository.sumCurrentValue(ORGANIZATION_ID)),
+                "totalValue", money(assetRepository.sumCurrentValue(organizationId())),
                 "inUse", inUse,
                 "underMaintenance", maintenance,
                 "retiredDisposed", retired + disposed,
@@ -92,8 +95,8 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 "upcomingMaintenance", upcoming,
                 "assetHealth", total == 0 ? ZERO : BigDecimal.valueOf(inUse).multiply(BigDecimal.valueOf(100))
                         .divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP),
-                "accumulatedDepreciation", money(assetRepository.sumAccumulatedDepreciation(ORGANIZATION_ID)),
-                "netBookValue", money(assetRepository.sumNetBookValue(ORGANIZATION_ID)),
+                "accumulatedDepreciation", money(assetRepository.sumAccumulatedDepreciation(organizationId())),
+                "netBookValue", money(assetRepository.sumNetBookValue(organizationId())),
                 "insight", total == 0 ? "Add your first asset to start tracking value and utilization."
                         : inUse + " of " + total + " assets are currently in use."
         );
@@ -103,7 +106,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> categoryOptions() {
         return categoryRepository.findAllByOrganizationIdAndStatusAndDeletedFalseOrderByCategoryName(
-                        ORGANIZATION_ID, CategoryStatus.ACTIVE)
+                        organizationId(), CategoryStatus.ACTIVE)
                 .stream().map(this::categorySummary).toList();
     }
 
@@ -112,7 +115,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Page<Map<String, Object>> categories(String search, String status, Pageable pageable) {
         Specification<AssetCategory> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(cb.equal(root.get("organizationId"), organizationId()));
             predicates.add(cb.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String value = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -136,11 +139,11 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional
     public Map<String, Object> createCategory(CategoryRequest request) {
         if (categoryRepository.existsByOrganizationIdAndCategoryNameIgnoreCaseAndDeletedFalse(
-                ORGANIZATION_ID, request.categoryName().trim())) {
+                organizationId(), request.categoryName().trim())) {
             throw new ResourceConflictException("An asset category with this name already exists.");
         }
         AssetCategory category = new AssetCategory();
-        category.setOrganizationId(ORGANIZATION_ID);
+        category.setOrganizationId(organizationId());
         category.setCategoryCode(nextCategoryCode(request.categoryName()));
         applyCategory(category, request);
         return categoryDetails(categoryRepository.save(category));
@@ -151,7 +154,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Map<String, Object> updateCategory(Long id, CategoryRequest request) {
         AssetCategory category = findCategory(id);
         if (categoryRepository.existsByOrganizationIdAndCategoryNameIgnoreCaseAndIdNotAndDeletedFalse(
-                ORGANIZATION_ID, request.categoryName().trim(), id)) {
+                organizationId(), request.categoryName().trim(), id)) {
             throw new ResourceConflictException("An asset category with this name already exists.");
         }
         applyCategory(category, request);
@@ -162,7 +165,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional
     public void deleteCategory(Long id) {
         AssetCategory category = findCategory(id);
-        if (assetRepository.countByOrganizationIdAndCategoryIdAndDeletedFalse(ORGANIZATION_ID, id) > 0) {
+        if (assetRepository.countByOrganizationIdAndCategoryIdAndDeletedFalse(organizationId(), id) > 0) {
             throw new ResourceConflictException("This category cannot be deleted because assets are linked to it.");
         }
         category.setDeleted(true);
@@ -209,9 +212,9 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional(readOnly = true)
     public List<Map<String, Object>> eligibleAssets() {
         return assetRepository.findAllByOrganizationIdAndStatusInAndDeletedFalseOrderByAssetName(
-                        ORGANIZATION_ID, List.of(AssetStatus.AVAILABLE, AssetStatus.IN_USE))
+                        organizationId(), List.of(AssetStatus.AVAILABLE, AssetStatus.IN_USE))
                 .stream().filter(asset -> assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(
-                        ORGANIZATION_ID, asset.getId(), AssignmentStatus.ACTIVE).isEmpty())
+                        organizationId(), asset.getId(), AssignmentStatus.ACTIVE).isEmpty())
                 .map(this::assetSummary).toList();
     }
 
@@ -220,12 +223,12 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Map<String, Object> asset(Long id) {
         Asset asset = findAsset(id);
         Map<String, Object> details = assetDetails(asset);
-        details.put("assignments", assignmentRepository.findAllByOrganizationIdAndAssetIdOrderByCreatedAtDesc(ORGANIZATION_ID, id)
+        details.put("assignments", assignmentRepository.findAllByOrganizationIdAndAssetIdOrderByCreatedAtDesc(organizationId(), id)
                 .stream().map(this::assignmentSummary).toList());
         details.put("maintenance", maintenanceRepository.findAllByOrganizationIdAndAssetIdAndDeletedFalseOrderByScheduledDateDesc(
-                ORGANIZATION_ID, id).stream().map(this::maintenanceSummary).toList());
+                organizationId(), id).stream().map(this::maintenanceSummary).toList());
         details.put("depreciationSchedules", depreciationRepository.findAllByOrganizationIdAndAssetIdAndDeletedFalseOrderByCreatedAtDesc(
-                ORGANIZATION_ID, id).stream().map(this::depreciationSummary).toList());
+                organizationId(), id).stream().map(this::depreciationSummary).toList());
         details.put("history", historyRepository.findAllByAssetIdOrderByCreatedAtDesc(id).stream().map(this::historySummary).toList());
         return details;
     }
@@ -235,7 +238,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Map<String, Object> createAsset(AssetRequest request) {
         AssetCategory category = findCategory(request.categoryId());
         Asset asset = new Asset();
-        asset.setOrganizationId(ORGANIZATION_ID);
+        asset.setOrganizationId(organizationId());
         asset.setAssetNumber(nextAssetNumber(category));
         applyAsset(asset, category, request);
         asset = assetRepository.save(asset);
@@ -260,7 +263,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional
     public void deleteAsset(Long id) {
         Asset asset = findAsset(id);
-        if (assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(ORGANIZATION_ID, id, AssignmentStatus.ACTIVE).isPresent()) {
+        if (assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(organizationId(), id, AssignmentStatus.ACTIVE).isPresent()) {
             throw new ResourceConflictException("Return the assigned asset before deleting it.");
         }
         asset.setDeleted(true);
@@ -273,7 +276,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Page<Map<String, Object>> assignments(String search, String status, Pageable pageable) {
         Specification<AssetAssignment> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(cb.equal(root.get("organizationId"), organizationId()));
             if (StringUtils.hasText(search)) {
                 String value = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(cb.or(cb.like(cb.lower(root.get("resourceName")), value),
@@ -296,11 +299,11 @@ public class AssetManagementServiceImpl implements AssetManagementService {
             throw new IllegalStateException("This asset is not eligible for assignment.");
         }
         if (assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(
-                ORGANIZATION_ID, asset.getId(), AssignmentStatus.ACTIVE).isPresent()) {
+                organizationId(), asset.getId(), AssignmentStatus.ACTIVE).isPresent()) {
             throw new ResourceConflictException("This asset already has an active assignment.");
         }
         AssetAssignment assignment = new AssetAssignment();
-        assignment.setOrganizationId(ORGANIZATION_ID);
+        assignment.setOrganizationId(organizationId());
         assignment.setAsset(asset);
         assignment.setResourceId(request.resourceId());
         assignment.setResourceName(request.resourceName().trim());
@@ -328,7 +331,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Override
     @Transactional
     public Map<String, Object> returnAssignment(Long id, LocalDate returnDate, String notes) {
-        AssetAssignment assignment = assignmentRepository.findByIdAndOrganizationId(id, ORGANIZATION_ID)
+        AssetAssignment assignment = assignmentRepository.findByIdAndOrganizationId(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Asset assignment not found."));
         if (assignment.getStatus() != AssignmentStatus.ACTIVE) throw new IllegalStateException("Only active assignments can be returned.");
         assignment.setActualReturnDate(returnDate == null ? LocalDate.now() : returnDate);
@@ -352,7 +355,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                                                   Pageable pageable) {
         Specification<AssetMaintenance> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(cb.equal(root.get("organizationId"), organizationId()));
             predicates.add(cb.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String value = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -384,7 +387,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     @Transactional
     public Map<String, Object> createMaintenance(MaintenanceRequest request) {
         AssetMaintenance maintenance = new AssetMaintenance();
-        maintenance.setOrganizationId(ORGANIZATION_ID);
+        maintenance.setOrganizationId(organizationId());
         maintenance.setWorkOrderNumber("WO-" + LocalDate.now().getYear() + "-" + String.format("%04d", maintenanceRepository.count() + 1));
         applyMaintenance(maintenance, findAsset(request.assetId()), request);
         maintenance = maintenanceRepository.save(maintenance);
@@ -440,11 +443,11 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     public Page<Map<String, Object>> depreciation(String search, String financialYear, String method,
                                                    Long categoryId, String status, Pageable pageable) {
         assetRepository.findAllByOrganizationIdAndStatusInAndDeletedFalseOrderByAssetName(
-                        ORGANIZATION_ID, List.of(AssetStatus.AVAILABLE, AssetStatus.IN_USE, AssetStatus.UNDER_MAINTENANCE))
+                        organizationId(), List.of(AssetStatus.AVAILABLE, AssetStatus.IN_USE, AssetStatus.UNDER_MAINTENANCE))
                 .forEach(this::ensureDepreciationSchedule);
         Specification<AssetDepreciationSchedule> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(cb.equal(root.get("organizationId"), organizationId()));
             predicates.add(cb.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String value = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -480,7 +483,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
             throw new IllegalStateException("Depreciation cannot be scheduled for this asset.");
         }
         AssetDepreciationSchedule schedule = new AssetDepreciationSchedule();
-        schedule.setOrganizationId(ORGANIZATION_ID);
+        schedule.setOrganizationId(organizationId());
         applyDepreciation(schedule, asset, request);
         schedule = depreciationRepository.save(schedule);
         rebuildEntries(schedule);
@@ -537,7 +540,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                                                 Long categoryId, String status, Pageable pageable) {
         Specification<AssetDisposal> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.equal(root.get("organizationId"), ORGANIZATION_ID));
+            predicates.add(cb.equal(root.get("organizationId"), organizationId()));
             predicates.add(cb.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String value = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
@@ -572,11 +575,11 @@ public class AssetManagementServiceImpl implements AssetManagementService {
             throw new IllegalStateException("This asset is not eligible for disposal.");
         }
         if (disposalRepository.findFirstByOrganizationIdAndAssetIdAndStatusNotAndDeletedFalse(
-                ORGANIZATION_ID, asset.getId(), DisposalStatus.REVERSED).isPresent()) {
+                organizationId(), asset.getId(), DisposalStatus.REVERSED).isPresent()) {
             throw new ResourceConflictException("An active disposal already exists for this asset.");
         }
         AssetDisposal disposal = new AssetDisposal();
-        disposal.setOrganizationId(ORGANIZATION_ID);
+        disposal.setOrganizationId(organizationId());
         disposal.setDisposalNumber("DISP-" + LocalDate.now().getYear() + "-" + String.format("%04d", disposalRepository.count() + 1));
         applyDisposal(disposal, asset, request);
         disposal = disposalRepository.save(disposal);
@@ -604,7 +607,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
             if (previous != DisposalStatus.APPROVED && previous != DisposalStatus.PENDING_APPROVAL) {
                 throw new IllegalStateException("Only an approved or pending disposal can be completed.");
             }
-            assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(ORGANIZATION_ID, asset.getId(), AssignmentStatus.ACTIVE)
+            assignmentRepository.findFirstByOrganizationIdAndAssetIdAndStatus(organizationId(), asset.getId(), AssignmentStatus.ACTIVE)
                     .ifPresent(active -> returnAssignment(active.getId(), LocalDate.now(), "Returned during disposal"));
             AssetStatus oldStatus = asset.getStatus();
             asset.setStatus(AssetStatus.DISPOSED);
@@ -667,7 +670,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
         asset.setAssetCondition(request.assetCondition());
         asset.setStatus(request.draft() ? AssetStatus.DRAFT : Objects.requireNonNullElse(request.status(), AssetStatus.AVAILABLE));
         asset.setDraft(request.draft());
-        asset.setVendor(request.vendorId() == null ? null : vendorRepository.findByIdAndOrganizationId(request.vendorId(), ORGANIZATION_ID)
+        asset.setVendor(request.vendorId() == null ? null : vendorRepository.findByIdAndOrganizationId(request.vendorId(), organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found.")));
         asset.setVendorName(asset.getVendor() == null ? null : asset.getVendor().getVendorName());
         asset.setPurchaseDate(request.purchaseDate());
@@ -767,7 +770,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 || List.of(AssetStatus.DRAFT, AssetStatus.RETIRED, AssetStatus.DISPOSED,
                 AssetStatus.LOST, AssetStatus.WRITTEN_OFF).contains(asset.getStatus())
                 || depreciationRepository.findFirstByOrganizationIdAndAssetIdAndDeletedFalseOrderByCreatedAtDesc(
-                ORGANIZATION_ID, asset.getId()).isPresent()) {
+                organizationId(), asset.getId()).isPresent()) {
             return;
         }
 
@@ -792,7 +795,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 ResidualValueType.FIXED_AMOUNT, residual, "Depreciation Expense", "Accumulated Depreciation",
                 "FULL_MONTH", true, true, "Created from asset financial settings", false);
         AssetDepreciationSchedule schedule = new AssetDepreciationSchedule();
-        schedule.setOrganizationId(ORGANIZATION_ID);
+        schedule.setOrganizationId(organizationId());
         applyDepreciation(schedule, asset, request);
         schedule = depreciationRepository.save(schedule);
         rebuildEntries(schedule);
@@ -894,7 +897,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
                 "usefulLifeYears", category.getUsefulLifeYears(), "residualValuePercentage", category.getResidualValuePercentage(),
                 "depreciationFrequency", category.getDepreciationFrequency(), "defaultAssetCondition", category.getDefaultAssetCondition(),
                 "displayColor", category.getDisplayColor(), "status", category.getStatus(),
-                "assetCount", assetRepository.countByOrganizationIdAndCategoryIdAndDeletedFalse(ORGANIZATION_ID, category.getId()));
+                "assetCount", assetRepository.countByOrganizationIdAndCategoryIdAndDeletedFalse(organizationId(), category.getId()));
     }
 
     private Map<String, Object> categoryDetails(AssetCategory category) {
@@ -1024,7 +1027,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
 
     private void history(Asset asset, String event, AssetStatus from, AssetStatus to, String description) {
         AssetHistory history = new AssetHistory();
-        history.setOrganizationId(ORGANIZATION_ID);
+        history.setOrganizationId(organizationId());
         history.setAsset(asset);
         history.setEventType(event);
         history.setFromStatus(from == null ? null : from.name());
@@ -1034,36 +1037,36 @@ public class AssetManagementServiceImpl implements AssetManagementService {
     }
 
     private Asset findAsset(Long id) {
-        return assetRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return assetRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Asset not found."));
     }
 
     private AssetCategory findCategory(Long id) {
-        return categoryRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return categoryRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Asset category not found."));
     }
 
     private AssetMaintenance findMaintenance(Long id) {
-        return maintenanceRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return maintenanceRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Maintenance record not found."));
     }
 
     private AssetDepreciationSchedule findDepreciation(Long id) {
-        return depreciationRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return depreciationRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Depreciation schedule not found."));
     }
 
     private AssetDisposal findDisposal(Long id) {
-        return disposalRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return disposalRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Asset disposal not found."));
     }
 
     private Specification<Asset> baseAssetSpec() {
-        return (root, query, cb) -> cb.and(cb.equal(root.get("organizationId"), ORGANIZATION_ID), cb.isFalse(root.get("deleted")));
+        return (root, query, cb) -> cb.and(cb.equal(root.get("organizationId"), organizationId()), cb.isFalse(root.get("deleted")));
     }
 
     private long countAsset(AssetStatus status) {
-        return assetRepository.countByOrganizationIdAndStatusAndDeletedFalseAndDraftFalse(ORGANIZATION_ID, status);
+        return assetRepository.countByOrganizationIdAndStatusAndDeletedFalseAndDraftFalse(organizationId(), status);
     }
 
     private String nextCategoryCode(String name) {
@@ -1073,7 +1076,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
         if (code.isBlank()) code = "AST";
         String candidate = code;
         int suffix = 2;
-        while (categoryRepository.existsByOrganizationIdAndCategoryCodeIgnoreCaseAndDeletedFalse(ORGANIZATION_ID, candidate)) {
+        while (categoryRepository.existsByOrganizationIdAndCategoryCodeIgnoreCaseAndDeletedFalse(organizationId(), candidate)) {
             candidate = code + suffix++;
         }
         return candidate;
@@ -1081,7 +1084,7 @@ public class AssetManagementServiceImpl implements AssetManagementService {
 
     private String nextAssetNumber(AssetCategory category) {
         String prefix = "AST-" + category.getCategoryCode() + "-";
-        List<String> numbers = assetRepository.findRecentNumbers(ORGANIZATION_ID, prefix, Pageable.ofSize(1));
+        List<String> numbers = assetRepository.findRecentNumbers(organizationId(), prefix, Pageable.ofSize(1));
         int next = 1;
         if (!numbers.isEmpty()) {
             String digits = numbers.get(0).substring(prefix.length()).replaceAll("\\D", "");

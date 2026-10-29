@@ -6,6 +6,7 @@ import com.intelliatech.app.entity.AssetAttachment;
 import com.intelliatech.app.repository.AssetAttachmentRepository;
 import com.intelliatech.app.repository.AssetRepository;
 import com.intelliatech.app.security.CurrentUserService;
+import com.intelliatech.app.security.TenantContext;
 import java.time.LocalDateTime;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -17,7 +18,6 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 @RequiredArgsConstructor
 public class AssetImageService {
-    private static final Long ORGANIZATION_ID = 1L;
 
     public record Image(Long id, Long assetId, String fileName, String fileUrl, String contentType,
                         Long fileSize, LocalDateTime uploadedAt) {}
@@ -27,6 +27,7 @@ public class AssetImageService {
     private final AssetAttachmentRepository attachments;
     private final FileStorageService storage;
     private final CurrentUserService users;
+    private final TenantContext tenants;
 
     @Transactional(readOnly = true)
     public List<Image> list(Long assetId) {
@@ -89,7 +90,7 @@ public class AssetImageService {
     }
 
     private Asset asset(Long id) {
-        return assets.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+        return assets.findByIdAndOrganizationIdAndDeletedFalse(id, tenants.requireOrganizationId())
                 .orElseThrow(() -> new IllegalArgumentException("Asset does not exist."));
     }
 

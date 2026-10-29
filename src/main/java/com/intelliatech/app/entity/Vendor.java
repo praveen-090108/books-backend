@@ -30,8 +30,9 @@ public class Vendor {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @org.hibernate.annotations.TenantId
     @Column(nullable = false)
-    private Long organizationId = 1L;
+    private Long organizationId;
 
     @Column(nullable = false, length = 64)
     private String vendorNumber;

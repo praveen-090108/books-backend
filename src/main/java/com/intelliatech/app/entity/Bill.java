@@ -19,7 +19,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class Bill {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 64) private String billNumber;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "vendor_id") private Vendor vendor;
     @Column(nullable = false, length = 160) private String vendorName;

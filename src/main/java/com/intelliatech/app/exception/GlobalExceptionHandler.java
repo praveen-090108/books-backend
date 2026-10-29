@@ -28,10 +28,22 @@ import org.springframework.web.multipart.MultipartException;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ApiErrorResponse> rateLimited(RateLimitExceededException exception,
+                                                         HttpServletRequest request) {
+        return handled(HttpStatus.TOO_MANY_REQUESTS, "RATE_LIMIT_EXCEEDED",
+                exception.getMessage(), Map.of(), exception, request);
+    }
+
     @ExceptionHandler(AuthenticationException.class)
     public ResponseEntity<ApiErrorResponse> authentication(AuthenticationException exception, HttpServletRequest request) {
+        boolean loginRequest = request.getRequestURI().equals("/api/auth/login")
+                || request.getRequestURI().equals("/api/auth/platform/login");
         return handled(HttpStatus.UNAUTHORIZED, "AUTHENTICATION_REQUIRED",
-                "Authentication is required or your session has expired.", Map.of(), exception, request);
+                loginRequest
+                        ? safeMessage(exception.getMessage(), "Invalid email or password.")
+                        : "Authentication is required or your session has expired.",
+                Map.of(), exception, request);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

@@ -8,6 +8,7 @@ import com.intelliatech.app.exception.ResourceNotFoundException;
 import com.intelliatech.app.mapper.CustomerMapper;
 import com.intelliatech.app.repository.CustomerRepository;
 import com.intelliatech.app.service.CustomerService;
+import com.intelliatech.app.security.TenantContext;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,11 +22,12 @@ public class CustomerServiceImpl implements CustomerService {
 
     private final CustomerRepository customerRepository;
     private final CustomerMapper customerMapper;
+    private final TenantContext tenants;
 
     @Override
     @Transactional(readOnly = true)
     public List<CustomerResponse> findAll() {
-        return customerRepository.findAll()
+        return customerRepository.findAllByOrganizationId(tenants.requireOrganizationId())
                 .stream()
                 .map(customerMapper::toResponse)
                 .toList();
@@ -39,10 +41,12 @@ public class CustomerServiceImpl implements CustomerService {
 
     @Override
     public CustomerResponse create(CustomerRequest request) {
-        if (customerRepository.existsByEmail(request.email())) {
+        Long organizationId = tenants.requireOrganizationId();
+        if (customerRepository.existsByOrganizationIdAndEmailIgnoreCase(organizationId, request.email())) {
             throw new DuplicateResourceException("Customer email already exists");
         }
         Customer customer = customerMapper.toEntity(request);
+        customer.setOrganizationId(organizationId);
         return customerMapper.toResponse(customerRepository.save(customer));
     }
 
@@ -59,7 +63,7 @@ public class CustomerServiceImpl implements CustomerService {
     }
 
     private Customer getCustomer(Long id) {
-        return customerRepository.findById(id)
+        return customerRepository.findByOrganizationIdAndId(tenants.requireOrganizationId(), id)
                 .orElseThrow(() -> new ResourceNotFoundException("Customer not found"));
     }
 }

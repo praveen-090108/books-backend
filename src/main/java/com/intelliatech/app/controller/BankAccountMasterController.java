@@ -4,6 +4,7 @@ import com.intelliatech.app.entity.BankAccountMaster;
 import com.intelliatech.app.exception.DuplicateResourceException;
 import com.intelliatech.app.exception.ResourceNotFoundException;
 import com.intelliatech.app.repository.BankAccountMasterRepository;
+import com.intelliatech.app.security.TenantContext;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -22,9 +23,9 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/masters/bank-accounts")
 @RequiredArgsConstructor
 public class BankAccountMasterController {
-    private static final Long ORGANIZATION_ID = 1L;
     private final BankAccountMasterRepository accounts;
     private final JdbcTemplate jdbc;
+    private final TenantContext tenants;
 
     public record Request(
             @NotBlank @Size(max=160) String accountName,
@@ -44,16 +45,16 @@ public class BankAccountMasterController {
 
     @GetMapping @PreAuthorize("isAuthenticated()")
     public List<Response> list(@RequestParam(defaultValue="false") boolean includeInactive) {
-        var rows = includeInactive ? accounts.findAllByOrganizationIdOrderByAccountNameAsc(ORGANIZATION_ID)
-                : accounts.findAllByOrganizationIdAndActiveTrueOrderByAccountNameAsc(ORGANIZATION_ID);
+        var rows = includeInactive ? accounts.findAllByOrganizationIdOrderByAccountNameAsc(org())
+                : accounts.findAllByOrganizationIdAndActiveTrueOrderByAccountNameAsc(org());
         return rows.stream().map(this::response).toList();
     }
 
     @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')") @Transactional
     public Response create(@Valid @RequestBody Request request) {
         String name = request.accountName().trim();
-        if (accounts.existsByOrganizationIdAndAccountNameIgnoreCase(ORGANIZATION_ID, name)) throw new DuplicateResourceException("Bank Account already exists.");
-        BankAccountMaster account = new BankAccountMaster(); account.setOrganizationId(ORGANIZATION_ID);
+        if (accounts.existsByOrganizationIdAndAccountNameIgnoreCase(org(), name)) throw new DuplicateResourceException("Bank Account already exists.");
+        BankAccountMaster account = new BankAccountMaster(); account.setOrganizationId(org());
         copy(request, account); account.setCreatedBy(user()); account.setUpdatedBy(user());
         return response(accounts.save(account));
     }
@@ -61,7 +62,7 @@ public class BankAccountMasterController {
     @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") @Transactional
     public Response update(@PathVariable Long id, @Valid @RequestBody Request request) {
         BankAccountMaster account = get(id); String name = request.accountName().trim();
-        if (accounts.existsByOrganizationIdAndAccountNameIgnoreCaseAndIdNot(ORGANIZATION_ID, name, id)) throw new DuplicateResourceException("Bank Account already exists.");
+        if (accounts.existsByOrganizationIdAndAccountNameIgnoreCaseAndIdNot(org(), name, id)) throw new DuplicateResourceException("Bank Account already exists.");
         String retainedNumber = account.getAccountNumber(); copy(request, account);
         if (clean(request.accountNumber()) == null) account.setAccountNumber(retainedNumber);
         account.setUpdatedBy(user()); return response(accounts.save(account));
@@ -89,7 +90,8 @@ public class BankAccountMasterController {
     }
     private Response response(BankAccountMaster value) { return new Response(value.getId(), value.getAccountName(), value.getBankName(), value.getAccountHolderName(), mask(value.getAccountNumber()), value.getAccountType(), value.getIfscCode(), value.getBranchName(), value.getCurrencyCode(), value.getOpeningBalance(), value.isActive(), value.getNotes(), usageCount(value.getId())); }
     private long usageCount(Long id) { return jdbc.queryForObject("SELECT (SELECT COUNT(*) FROM expenses WHERE bank_account_id=? AND deleted=FALSE)+(SELECT COUNT(*) FROM bill_payments WHERE bank_account_id=?)+(SELECT COUNT(*) FROM invoice_payments WHERE bank_account_id=?)", Long.class, id, id, id); }
-    private BankAccountMaster get(Long id) { return accounts.findByIdAndOrganizationId(id, ORGANIZATION_ID).orElseThrow(() -> new ResourceNotFoundException("Bank Account not found.")); }
+    private BankAccountMaster get(Long id) { return accounts.findByIdAndOrganizationId(id, org()).orElseThrow(() -> new ResourceNotFoundException("Bank Account not found.")); }
+    private Long org() { return tenants.requireOrganizationId(); }
     private String user() { return SecurityContextHolder.getContext().getAuthentication().getName(); }
     private String clean(String value) { return value == null || value.trim().isEmpty() ? null : value.trim(); }
     private String upper(String value) { String cleaned=clean(value); return cleaned==null?null:cleaned.toUpperCase(); }

@@ -14,14 +14,14 @@ server:
 
 app:
   environment: sandbox
+  saas:
+    registration-enabled: ${IRAL_REGISTRATION_ENABLED:true}
   frontend-url: http://127.0.0.1:5173
   cors:
     allowed-origins: http://localhost:5173,http://127.0.0.1:5173
   security:
     jwt-secret: intelliatech-local-sandbox-jwt-secret-change-before-sharing
     jwt-expiration-minutes: 60
-  bootstrap:
-    default-admin-enabled: true
   storage:
     # Kept only so historical local attachment keys remain readable until they are migrated.
     local:

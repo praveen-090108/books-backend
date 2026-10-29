@@ -30,16 +30,20 @@ public class InvoicePayment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @org.hibernate.annotations.TenantId
+    @Column(nullable = false)
+    private Long organizationId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "primary_invoice_id", nullable = false)
     private BusinessRecord primaryInvoice;
 
     private Long customerId;
 
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String paymentNumber;
 
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = false, length = 100)
     private String idempotencyKey;
 
     @Column(nullable = false, length = 160)

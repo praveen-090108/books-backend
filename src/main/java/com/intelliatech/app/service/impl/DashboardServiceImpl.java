@@ -24,6 +24,7 @@ import com.intelliatech.app.repository.InvoiceLifecycleRepository;
 import com.intelliatech.app.repository.PurchaseOrderRepository;
 import com.intelliatech.app.repository.VendorRepository;
 import com.intelliatech.app.service.DashboardService;
+import com.intelliatech.app.security.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -49,7 +50,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class DashboardServiceImpl implements DashboardService {
 
-    private static final Long ORGANIZATION_ID = 1L;
     private static final Set<String> TRANSACTION_TYPES = Set.of(
             "invoices", "quotes", "sales-orders", "payments-received",
             "bills", "expenses", "purchase-orders"
@@ -62,6 +62,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final ExpenseRepository expenseRepository;
     private final PurchaseOrderRepository purchaseOrderRepository;
     private final VendorRepository vendorRepository;
+    private final TenantContext tenants;
 
     @Override
     @Transactional(readOnly = true)
@@ -71,7 +72,7 @@ public class DashboardServiceImpl implements DashboardService {
         PurchaseOverviewResponse purchases = buildPurchaseOverview(range);
 
         List<BusinessRecordResponse> recent = businessRecordRepository
-                .findByRecordDateBetween(range.from(), range.to())
+                .findByOrganizationIdAndRecordDateBetween(tenants.requireOrganizationId(), range.from(), range.to())
                 .stream()
                 .filter(record -> TRANSACTION_TYPES.contains(record.getType()))
                 .sorted(Comparator.comparing(BusinessRecord::getRecordDate)
@@ -117,7 +118,8 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private SalesOverviewResponse buildSalesOverview(DateRange range) {
-        List<BusinessRecord> allInRange = businessRecordRepository.findByRecordDateBetween(range.from(), range.to());
+        Long organizationId = tenants.requireOrganizationId();
+        List<BusinessRecord> allInRange = businessRecordRepository.findByOrganizationIdAndRecordDateBetween(organizationId, range.from(), range.to());
         List<BusinessRecord> invoices = allInRange.stream()
                 .filter(record -> "sales".equalsIgnoreCase(record.getModule()))
                 .filter(record -> "invoices".equalsIgnoreCase(record.getType()))
@@ -146,6 +148,7 @@ public class DashboardServiceImpl implements DashboardService {
         long totalCustomers = customers.size();
         if (totalCustomers == 0) {
             totalCustomers = businessRecordRepository.findAll().stream()
+                    .filter(record -> organizationId.equals(record.getOrganizationId()))
                     .filter(record -> "sales".equalsIgnoreCase(record.getModule()))
                     .filter(record -> "customers".equalsIgnoreCase(record.getType()))
                     .count();
@@ -192,19 +195,18 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private PurchaseOverviewResponse buildPurchaseOverview(DateRange range) {
-        List<Bill> bills = billRepository.findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID).stream()
+        Long organizationId = tenants.requireOrganizationId();
+        List<Bill> bills = billRepository.findAllByOrganizationIdAndDeletedFalse(organizationId).stream()
                 .filter(bill -> inRange(bill.getBillDate(), range))
                 .toList();
-        List<Expense> expenses = expenseRepository.findAll().stream()
-                .filter(expense -> ORGANIZATION_ID.equals(expense.getOrganizationId()) && !expense.isDeleted())
+        List<Expense> expenses = expenseRepository.findAllByOrganizationIdAndDeletedFalse(organizationId).stream()
                 .filter(expense -> inRange(expense.getExpenseDate(), range))
                 .toList();
         List<PurchaseOrder> purchaseOrders = purchaseOrderRepository
-                .findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID).stream()
+                .findAllByOrganizationIdAndDeletedFalse(organizationId).stream()
                 .filter(order -> inRange(order.getPurchaseOrderDate(), range))
                 .toList();
-        List<Vendor> vendors = vendorRepository.findAll().stream()
-                .filter(vendor -> ORGANIZATION_ID.equals(vendor.getOrganizationId()))
+        List<Vendor> vendors = vendorRepository.findAllByOrganizationId(organizationId).stream()
                 .toList();
 
         BigDecimal billTotal = sum(bills, Bill::getTotalAmount);
@@ -251,11 +253,10 @@ public class DashboardServiceImpl implements DashboardService {
                 .map(this::billDocument)
                 .toList();
         DateRange previous = range.previousYear();
-        List<Bill> previousBills = billRepository.findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID).stream()
+        List<Bill> previousBills = billRepository.findAllByOrganizationIdAndDeletedFalse(organizationId).stream()
                 .filter(bill -> inRange(bill.getBillDate(), previous))
                 .toList();
-        List<Expense> previousExpenses = expenseRepository.findAll().stream()
-                .filter(expense -> ORGANIZATION_ID.equals(expense.getOrganizationId()) && !expense.isDeleted())
+        List<Expense> previousExpenses = expenseRepository.findAllByOrganizationIdAndDeletedFalse(organizationId).stream()
                 .filter(expense -> inRange(expense.getExpenseDate(), previous))
                 .toList();
 
@@ -281,7 +282,7 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private List<BusinessRecord> salesInvoices(DateRange range) {
-        return businessRecordRepository.findByRecordDateBetween(range.from(), range.to()).stream()
+        return businessRecordRepository.findByOrganizationIdAndRecordDateBetween(tenants.requireOrganizationId(), range.from(), range.to()).stream()
                 .filter(record -> "sales".equalsIgnoreCase(record.getModule()))
                 .filter(record -> "invoices".equalsIgnoreCase(record.getType()))
                 .toList();

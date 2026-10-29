@@ -32,6 +32,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
+import com.intelliatech.app.security.TenantContext;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -42,7 +43,6 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class BillServiceImpl implements BillService {
-    private static final Long ORGANIZATION_ID = 1L;
     private static final BigDecimal ZERO = new BigDecimal("0.00");
 
     private final BillRepository billRepository;
@@ -57,6 +57,9 @@ public class BillServiceImpl implements BillService {
     private final DocumentNumberPreferenceService numberService;
     private final BusinessRecordRepository businessRecordRepository;
     private final ObjectMapper objectMapper;
+    private final TenantContext tenants;
+
+    private Long organizationId() { return tenants.requireOrganizationId(); }
 
     @Override
     @Transactional
@@ -72,7 +75,7 @@ public class BillServiceImpl implements BillService {
     @Transactional
     public BillSummaryResponse summary() {
         refreshOverdue();
-        List<Bill> bills = billRepository.findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID);
+        List<Bill> bills = billRepository.findAllByOrganizationIdAndDeletedFalse(organizationId());
         long drafts = 0, open = 0, partial = 0, paid = 0, overdue = 0;
         BigDecimal total = ZERO, paidAmount = ZERO, due = ZERO;
         for (Bill bill : bills) {
@@ -95,7 +98,7 @@ public class BillServiceImpl implements BillService {
     public BillFiltersResponse filters() {
         PurchaseOrderFiltersResponse base = purchaseOrderService.filters();
         List<BillFiltersResponse.PurchaseOrderOption> purchaseOrders = purchaseOrderRepository
-                .findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID).stream()
+                .findAllByOrganizationIdAndDeletedFalse(organizationId()).stream()
                 .filter(order -> order.getStatus() != PurchaseOrderStatus.CANCELLED && order.getStatus() != PurchaseOrderStatus.CLOSED)
                 .map(order -> new BillFiltersResponse.PurchaseOrderOption(order.getId(), order.getPurchaseOrderNumber(),
                         order.getVendor() == null ? null : order.getVendor().getId(), order.getVendorName(), order.getStatus().name()))
@@ -118,7 +121,7 @@ public class BillServiceImpl implements BillService {
     @Transactional
     public BillResponse create(BillRequest request, String action) {
         validateUniqueNumber(request.billNumber(), null);
-        Bill bill = new Bill(); bill.setOrganizationId(ORGANIZATION_ID);
+        Bill bill = new Bill(); bill.setOrganizationId(organizationId());
         bill.setCreatedBy(currentUser()); bill.setUpdatedBy(currentUser());
         copy(request, bill); bill.setStatus(BillStatus.DRAFT);
         activity(bill, "CREATED", "Bill created as Draft.");
@@ -227,7 +230,7 @@ public class BillServiceImpl implements BillService {
     @Transactional
     public BillResponse cloneBill(Long id) {
         Bill source = getBill(id); Bill clone = new Bill();
-        clone.setOrganizationId(ORGANIZATION_ID); clone.setBillNumber(nextBillNumber());
+        clone.setOrganizationId(organizationId()); clone.setBillNumber(nextBillNumber());
         clone.setVendor(source.getVendor()); clone.setVendorName(source.getVendorName()); clone.setBillDate(LocalDate.now());
         clone.setDueDate(LocalDate.now().plusDays(daysForTerms(source.getPaymentTerms()))); clone.setPaymentTerms(source.getPaymentTerms());
         clone.setPlaceOfSupply(source.getPlaceOfSupply()); clone.setSourceOfSupply(source.getSourceOfSupply());
@@ -294,7 +297,7 @@ public class BillServiceImpl implements BillService {
     }
 
     private void copy(BillRequest request, Bill bill) {
-        Vendor vendor = vendorRepository.findByIdAndOrganizationId(request.vendorId(), ORGANIZATION_ID)
+        Vendor vendor = vendorRepository.findByIdAndOrganizationId(request.vendorId(), organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found."));
         if (vendor.getStatus() != VendorStatus.ACTIVE) throw new IllegalArgumentException("Only active Vendors can be selected.");
         if (request.dueDate().isBefore(request.billDate())) throw new IllegalArgumentException("Due Date cannot be before Bill Date.");
@@ -303,7 +306,7 @@ public class BillServiceImpl implements BillService {
         SupplyState destination = state(request.destinationOfSupplyCode(), "Destination of Supply");
         PurchaseOrder order = null;
         if (request.purchaseOrderId() != null) {
-            order = purchaseOrderRepository.findByIdAndOrganizationIdAndDeletedFalse(request.purchaseOrderId(), ORGANIZATION_ID)
+            order = purchaseOrderRepository.findByIdAndOrganizationIdAndDeletedFalse(request.purchaseOrderId(), organizationId())
                     .orElseThrow(() -> new ResourceNotFoundException("Purchase Order not found."));
             if (order.getVendor() != null && !order.getVendor().getId().equals(vendor.getId())) {
                 throw new IllegalArgumentException("The selected Purchase Order does not belong to this Vendor.");
@@ -427,7 +430,7 @@ public class BillServiceImpl implements BillService {
             BigDecimal minAmount, BigDecimal maxAmount) {
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(builder.equal(root.get("organizationId"), ORGANIZATION_ID)); predicates.add(builder.isFalse(root.get("deleted")));
+            predicates.add(builder.equal(root.get("organizationId"), organizationId())); predicates.add(builder.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String term = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
                 predicates.add(builder.or(builder.like(builder.lower(root.get("billNumber")), term),
@@ -475,21 +478,21 @@ public class BillServiceImpl implements BillService {
         if (bill.getItems().isEmpty()) throw new IllegalArgumentException("At least one valid item is required.");
         if (bill.getTotalAmount().signum() <= 0) throw new IllegalArgumentException("Bill total must be greater than zero."); }
 
-    private void refreshOverdue() { billRepository.findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID).forEach(this::refreshOverdue); }
+    private void refreshOverdue() { billRepository.findAllByOrganizationIdAndDeletedFalse(organizationId()).forEach(this::refreshOverdue); }
     private void refreshOverdue(Bill bill) { if (bill.getDueDate() != null && bill.getDueDate().isBefore(LocalDate.now()) && bill.getBalanceDue().signum() > 0
             && EnumSet.of(BillStatus.OPEN, BillStatus.PARTIALLY_PAID).contains(bill.getStatus())) bill.setStatus(BillStatus.OVERDUE); }
 
-    private Bill getBill(Long id) { return billRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+    private Bill getBill(Long id) { return billRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
             .orElseThrow(() -> new ResourceNotFoundException("Bill not found.")); }
-    private Bill getBillForUpdate(Long id) { return billRepository.findForUpdate(id, ORGANIZATION_ID)
+    private Bill getBillForUpdate(Long id) { return billRepository.findForUpdate(id, organizationId())
             .orElseThrow(() -> new ResourceNotFoundException("Bill not found.")); }
     private SupplyState state(String code, String label) { return supplyStateRepository.findById(code)
             .orElseThrow(() -> new IllegalArgumentException(label + " is not valid.")); }
     private BillStatus parseStatus(String status) { try { return BillStatus.valueOf(status.trim().toUpperCase(Locale.ROOT)); }
         catch (Exception exception) { throw new IllegalArgumentException("Unsupported Bill status."); } }
     private void validateUniqueNumber(String number, Long id) { boolean exists = id == null
-            ? billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalse(ORGANIZATION_ID, number.trim())
-            : billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalseAndIdNot(ORGANIZATION_ID, number.trim(), id);
+            ? billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalse(organizationId(), number.trim())
+            : billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalseAndIdNot(organizationId(), number.trim(), id);
         if (exists) throw new DuplicateResourceException("A Bill with this number already exists."); }
     private void activity(Bill bill, String action, String details) { BillActivity activity = new BillActivity(); activity.setAction(action);
         activity.setDetails(details); activity.setPerformedBy(currentUser()); bill.addActivity(activity); }
@@ -498,7 +501,7 @@ public class BillServiceImpl implements BillService {
     private String nextPaymentNumber() { String number; do { number = numberService.allocateForCreate("billPayments"); }
         while (billPaymentRepository.existsByPaymentNumber(number)); return number; }
     private String nextBillNumber() { String number; do { number = numberService.allocateForCreate("bills"); }
-        while (billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalse(ORGANIZATION_ID, number)); return number; }
+        while (billRepository.existsByOrganizationIdAndBillNumberIgnoreCaseAndDeletedFalse(organizationId(), number)); return number; }
     private int daysForTerms(String terms) { if (!StringUtils.hasText(terms)) return 30; var matcher = java.util.regex.Pattern.compile("(\\d+)").matcher(terms);
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : 30; }
 
@@ -542,7 +545,7 @@ public class BillServiceImpl implements BillService {
                 logo.setAlignment(Image.ALIGN_LEFT);
                 companyCell.addElement(logo);
             } else {
-                Paragraph wordmark = new Paragraph("INTELLIATECH", billFont(18, true, new Color(32, 32, 32)));
+                Paragraph wordmark = new Paragraph("IRAL", billFont(20, true, new Color(6, 19, 74)));
                 wordmark.setSpacingAfter(11);
                 companyCell.addElement(wordmark);
             }
@@ -759,7 +762,7 @@ public class BillServiceImpl implements BillService {
         Font normal = FontFactory.getFont(FontFactory.HELVETICA, 10, new Color(51, 65, 85));
 
         PdfPTable header = new PdfPTable(new float[]{3, 2}); header.setWidthPercentage(100);
-        header.addCell(noBorder(new Phrase("INTELLIATECH\nIntelliaTech Pvt. Ltd.\nIndia", heading)));
+        header.addCell(noBorder(new Phrase("IRAL\nAll Your Business. One Platform.", heading)));
         PdfPCell receiptTitle = noBorder(new Phrase("PAYMENT RECEIPT\n" + payment.getPaymentNumber(), title));
         receiptTitle.setHorizontalAlignment(Element.ALIGN_RIGHT); header.addCell(receiptTitle); document.add(header);
         document.add(new Paragraph(" "));
@@ -791,7 +794,7 @@ public class BillServiceImpl implements BillService {
         JsonNode details = json(organization == null ? null : organization.getNotes());
         JsonNode brandDetails = json(branding == null ? null : branding.getNotes());
         return new BillCompanyProfile(
-                organization == null ? "IntelliaTech Pvt. Ltd." : value(organization.getPartyName()),
+                organization == null ? "IRAL" : value(organization.getPartyName()),
                 details.path("address").asText(organization == null ? "" : value(organization.getPartyCity())),
                 details.path("state").asText(""),
                 details.path("pincode").asText(""),

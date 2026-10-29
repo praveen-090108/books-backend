@@ -6,6 +6,7 @@ import com.intelliatech.app.entity.DocumentNumberPreference;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.repository.DocumentNumberPreferenceRepository;
 import com.intelliatech.app.service.DocumentNumberPreferenceService;
+import com.intelliatech.app.security.TenantContext;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -21,11 +22,12 @@ public class DocumentNumberPreferenceServiceImpl implements DocumentNumberPrefer
 
     private final DocumentNumberPreferenceRepository repository;
     private final BusinessRecordRepository businessRecordRepository;
+    private final TenantContext tenants;
 
     @Override
     @Transactional(readOnly = true)
     public DocumentNumberPreferenceResponse get(String documentType) {
-        DocumentNumberPreference preference = repository.findByDocumentType(documentType).orElseGet(() -> defaultPreference(documentType));
+        DocumentNumberPreference preference = repository.findByOrganizationIdAndDocumentType(tenants.requireOrganizationId(), documentType).orElseGet(() -> defaultPreference(documentType));
         return toResponse(preference, nextAvailableSequence(preference));
     }
 
@@ -63,7 +65,7 @@ public class DocumentNumberPreferenceServiceImpl implements DocumentNumberPrefer
         DocumentNumberPreference preference = lockedPreference(documentType);
         long sequence = nextAvailableSequence(preference);
         String number = format(preference, sequence);
-        while (businessRecordRepository.existsByRecordNumber(number)) {
+        while (businessRecordRepository.existsByOrganizationIdAndRecordNumber(tenants.requireOrganizationId(), number)) {
             sequence++;
             number = format(preference, sequence);
         }
@@ -73,14 +75,16 @@ public class DocumentNumberPreferenceServiceImpl implements DocumentNumberPrefer
     }
 
     private DocumentNumberPreference lockedPreference(String documentType) {
-        return repository.findByDocumentTypeForUpdate(documentType).orElseGet(() -> {
+        Long organizationId = tenants.requireOrganizationId();
+        return repository.findByDocumentTypeForUpdate(organizationId, documentType).orElseGet(() -> {
             repository.saveAndFlush(defaultPreference(documentType));
-            return repository.findByDocumentTypeForUpdate(documentType).orElseThrow();
+            return repository.findByDocumentTypeForUpdate(organizationId, documentType).orElseThrow();
         });
     }
 
     private DocumentNumberPreference defaultPreference(String documentType) {
         DocumentNumberPreference preference = new DocumentNumberPreference();
+        preference.setOrganizationId(tenants.requireOrganizationId());
         preference.setDocumentType(documentType);
         preference.setAutoGenerate(true);
         preference.setPrefix(defaultPrefix(documentType));

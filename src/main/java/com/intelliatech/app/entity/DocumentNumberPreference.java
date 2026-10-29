@@ -16,6 +16,7 @@ import lombok.Setter;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import org.hibernate.annotations.TenantId;
 
 @Getter
 @Setter
@@ -28,8 +29,13 @@ public class DocumentNumberPreference {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotNull
+    @TenantId
+    @Column(name = "organization_id", nullable = false, updatable = false)
+    private Long organizationId;
+
     @NotBlank
-    @Column(nullable = false, unique = true, length = 64)
+    @Column(nullable = false, length = 64)
     private String documentType;
 
     @NotNull

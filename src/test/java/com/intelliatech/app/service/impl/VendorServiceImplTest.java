@@ -15,6 +15,7 @@ import com.intelliatech.app.exception.DuplicateResourceException;
 import com.intelliatech.app.exception.ResourceConflictException;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.repository.VendorRepository;
+import com.intelliatech.app.security.TenantContext;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import java.math.BigDecimal;
@@ -37,11 +38,15 @@ class VendorServiceImplTest {
     @Mock
     private BusinessRecordRepository businessRecordRepository;
 
+    @Mock
+    private TenantContext tenantContext;
+
     private VendorServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new VendorServiceImpl(vendorRepository, businessRecordRepository, new ObjectMapper());
+        when(tenantContext.requireOrganizationId()).thenReturn(1L);
+        service = new VendorServiceImpl(vendorRepository, businessRecordRepository, new ObjectMapper(), tenantContext);
     }
 
     @Test

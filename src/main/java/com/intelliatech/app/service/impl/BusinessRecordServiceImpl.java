@@ -14,6 +14,7 @@ import com.intelliatech.app.service.ResourceLifecycleService;
 import com.intelliatech.app.security.CurrentUserService;
 import com.intelliatech.app.security.DataScope;
 import com.intelliatech.app.security.DataScopeService;
+import com.intelliatech.app.security.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -50,6 +51,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
     private final DataScopeService dataScopes;
     private final JdbcTemplate jdbc;
     private final ResourceLifecycleService resourceLifecycleService;
+    private final TenantContext tenants;
 
     @Override
     @Transactional
@@ -62,7 +64,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
     @Override
     @Transactional
     public BusinessRecordResponse findById(String module, String type, Long id) {
-        BusinessRecord record = repository.findByModuleAndTypeAndId(module, type, id)
+        BusinessRecord record = repository.findByOrganizationIdAndModuleAndTypeAndId(tenants.requireOrganizationId(), module, type, id)
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found"));
         validateAccess(module, type, record);
         if (isInvoice(module, type)) invoiceLifecycleService.refreshOverdueStatus(id);
@@ -84,11 +86,13 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
             String allocatedNumber = documentNumberPreferenceService.allocateForCreate("invoices");
             effectiveRequest = invoiceCreateRequest(request, allocatedNumber);
         }
-        if (repository.existsByRecordNumber(effectiveRequest.recordNumber())) {
+        Long organizationId = tenants.requireOrganizationId();
+        if (repository.existsByOrganizationIdAndRecordNumber(organizationId, effectiveRequest.recordNumber())) {
             throw new DuplicateResourceException("Record number already exists: " + effectiveRequest.recordNumber());
         }
         BusinessRecord invoiceProject = validateInvoiceProject(module, type, effectiveRequest, null, true);
         BusinessRecord entity = mapper.toEntity(module, type, effectiveRequest);
+        entity.setOrganizationId(organizationId);
         applyResourceFields(module, type, effectiveRequest, entity, null);
         validateFixedCostProject(module, type, effectiveRequest, entity, null);
         Long currentUserId = currentUsers.getCurrentUserId();
@@ -106,7 +110,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
     @Override
     @Transactional
     public BusinessRecordResponse update(String module, String type, Long id, BusinessRecordRequest request) {
-        BusinessRecord record = repository.findByModuleAndTypeAndId(module, type, id)
+        BusinessRecord record = repository.findByOrganizationIdAndModuleAndTypeAndId(tenants.requireOrganizationId(), module, type, id)
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found"));
         validateAccess(module, type, record);
         validateCustomer(module,type,request);
@@ -149,8 +153,8 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
         String category = request.category() == null ? "" : request.category().trim();
         if (category.isBlank()) throw new IllegalArgumentException("Item Category is required.");
         List<Map<String, Object>> matches = jdbc.queryForList(
-                "SELECT active FROM item_category_master WHERE organization_id=1 AND LOWER(category_name)=LOWER(?)",
-                category
+                "SELECT active FROM item_category_master WHERE organization_id=? AND LOWER(category_name)=LOWER(?)",
+                tenants.requireOrganizationId(), category
         );
         if (matches.isEmpty()) throw new IllegalArgumentException("Please select a valid Item Category.");
         Object activeValue = matches.get(0).get("active");
@@ -264,10 +268,10 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
             project.setPaymentMode(currency);
             long domainId=notes.path("domainIndustryId").asLong(0);
             if(domainId>0){
-                List<Map<String,Object>> domains=jdbc.queryForList("SELECT name,active FROM domain_industry_master WHERE id=? AND organization_id=1",domainId);
+                List<Map<String,Object>> domains=jdbc.queryForList("SELECT name,active FROM domain_industry_master WHERE id=? AND organization_id=?",domainId,tenants.requireOrganizationId());
                 if(domains.isEmpty())throw new IllegalArgumentException("Domain / Industry does not exist.");
                 Object activeValue=domains.get(0).get("active");boolean active=Boolean.TRUE.equals(activeValue)||(activeValue instanceof Number number&&number.intValue()!=0);
-                boolean retained=!active&&projectId!=null&&jdbc.queryForObject("SELECT COUNT(*) FROM business_records WHERE id=? AND JSON_VALID(notes) AND CAST(JSON_UNQUOTE(JSON_EXTRACT(notes,'$.domainIndustryId')) AS UNSIGNED)=?",Integer.class,projectId,domainId)>0;
+                boolean retained=!active&&projectId!=null&&jdbc.queryForObject("SELECT COUNT(*) FROM business_records WHERE id=? AND organization_id=? AND JSON_VALID(notes) AND CAST(JSON_UNQUOTE(JSON_EXTRACT(notes,'$.domainIndustryId')) AS UNSIGNED)=?",Integer.class,projectId,tenants.requireOrganizationId(),domainId)>0;
                 if(!active&&!retained)throw new IllegalArgumentException("Selected Domain / Industry is inactive.");
             }
             String duration=notes.path("estimatedDuration").asText("");
@@ -417,7 +421,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
     @Override
     @Transactional
     public void delete(String module, String type, Long id) {
-        BusinessRecord record = repository.findByModuleAndTypeAndId(module, type, id)
+        BusinessRecord record = repository.findByOrganizationIdAndModuleAndTypeAndId(tenants.requireOrganizationId(), module, type, id)
                 .orElseThrow(() -> new ResourceNotFoundException("Record not found"));
         validateAccess(module, type, record);
         if (isInvoice(module, type)) invoiceLifecycleService.assertCanDelete(id);
@@ -455,6 +459,7 @@ public class BusinessRecordServiceImpl implements com.intelliatech.app.service.B
         DataScope dataScope = requiresDataScope(module, type) ? dataScopes.getCurrentDataScope() : DataScope.unrestrictedScope();
         return (root, query, builder) -> {
             Predicate predicate = builder.and(
+                    builder.equal(root.get("organizationId"), tenants.requireOrganizationId()),
                     builder.equal(root.get("module"), module),
                     builder.equal(root.get("type"), type)
             );

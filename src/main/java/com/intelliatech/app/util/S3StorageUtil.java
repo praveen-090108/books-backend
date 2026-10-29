@@ -1,7 +1,7 @@
 package com.intelliatech.app.util;
 
-import com.intelliatech.app.config.S3StorageProperties;
 import com.intelliatech.app.dto.response.FileUploadResponse;
+import com.intelliatech.app.service.IntegrationSettingsService;
 import java.io.IOException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,8 +27,7 @@ public class S3StorageUtil {
 
     public record StoredObject(byte[] content, String contentType) {}
 
-    private final S3Client s3Client;
-    private final S3StorageProperties properties;
+    private final IntegrationSettingsService settings;
 
     public FileUploadResponse upload(
             MultipartFile file,
@@ -36,8 +35,8 @@ public class S3StorageUtil {
             String originalName,
             String contentType
     ) {
-        validateConfiguration();
-        try {
+        var properties = validateConfiguration();
+        try (S3Client s3Client = settings.s3Client()) {
             PutObjectRequest request = PutObjectRequest.builder()
                     .bucket(properties.bucket())
                     .key(key)
@@ -57,8 +56,8 @@ public class S3StorageUtil {
     }
 
     public StoredObject download(String key) {
-        validateConfiguration();
-        try {
+        var properties = validateConfiguration();
+        try (S3Client s3Client = settings.s3Client()) {
             ResponseBytes<GetObjectResponse> object = s3Client.getObjectAsBytes(GetObjectRequest.builder()
                     .bucket(properties.bucket())
                     .key(key)
@@ -71,13 +70,16 @@ public class S3StorageUtil {
         }
     }
 
-    private void validateConfiguration() {
-        if (!StringUtils.hasText(properties.bucket()) || !StringUtils.hasText(properties.region())) {
+    private IntegrationSettingsService.S3Config validateConfiguration() {
+        var properties = settings.s3();
+        if (!properties.enabled() || !StringUtils.hasText(properties.bucket()) || !StringUtils.hasText(properties.region())) {
             throw new IllegalStateException("File storage is not configured. Set the S3 bucket and region.");
         }
+        return properties;
     }
 
     private String publicUrl(String key) {
+        var properties = settings.s3();
         if (StringUtils.hasText(properties.publicBaseUrl())) {
             String baseUrl = properties.publicBaseUrl().endsWith("/")
                     ? properties.publicBaseUrl().substring(0, properties.publicBaseUrl().length() - 1)

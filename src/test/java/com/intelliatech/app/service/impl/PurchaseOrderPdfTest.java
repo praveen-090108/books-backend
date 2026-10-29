@@ -13,6 +13,8 @@ import com.intelliatech.app.repository.TaxRateRepository;
 import com.intelliatech.app.repository.VendorRepository;
 import com.intelliatech.app.service.DocumentNumberPreferenceService;
 import com.intelliatech.app.service.ExpenseTaxCalculator;
+import com.intelliatech.app.service.FileStorageService;
+import com.intelliatech.app.security.TenantContext;
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import java.math.BigDecimal;
@@ -33,13 +35,17 @@ class PurchaseOrderPdfTest {
     @Mock SupplyStateRepository supplyStateRepository;
     @Mock ExpenseTaxCalculator taxCalculator;
     @Mock DocumentNumberPreferenceService numberService;
+    @Mock FileStorageService fileStorageService;
+    @Mock TenantContext tenantContext;
 
     private PurchaseOrderServiceImpl service;
 
     @BeforeEach
     void setUp() {
+        when(tenantContext.requireOrganizationId()).thenReturn(1L);
         service = new PurchaseOrderServiceImpl(purchaseOrderRepository, vendorRepository, businessRecordRepository,
-                taxRateRepository, supplyStateRepository, taxCalculator, numberService, new ObjectMapper());
+                taxRateRepository, supplyStateRepository, taxCalculator, numberService, new ObjectMapper(), fileStorageService,
+                tenantContext);
     }
 
     @Test

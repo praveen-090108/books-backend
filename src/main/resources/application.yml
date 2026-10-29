@@ -16,13 +16,30 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 50MB
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:25}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
 
 server:
   port: 8080
   shutdown: graceful
 
 app:
+  platform-admin:
+    email: ${IRAL_PLATFORM_ADMIN_EMAIL:}
+    username: ${IRAL_PLATFORM_ADMIN_USERNAME:}
+    password: ${IRAL_PLATFORM_ADMIN_PASSWORD:}
+    name: ${IRAL_PLATFORM_ADMIN_NAME:IRAL Platform Administrator}
   request-timeout-seconds: 15
+  saas:
+    registration-enabled: ${IRAL_REGISTRATION_ENABLED:false}
+  mail:
+    from: ${IRAL_MAIL_FROM:no-reply@iral.app}
   storage:
     provider: s3
 
@@ -34,3 +51,18 @@ logging:
   level:
     root: INFO
     org.flywaydb: INFO
+
+# Fail-closed EY sandbox qualification runner. Both flags must be explicitly enabled.
+qualification:
+  runner:
+    enabled: ${EY_QUALIFICATION_ENABLED:false}
+    execution-permitted: ${EY_QUALIFICATION_EXECUTION_PERMITTED:false}
+    run-on-startup: ${EY_QUALIFICATION_RUN_ON_STARTUP:false}
+    suite: ${EY_QUALIFICATION_SUITE:ALL}
+    scenario-plan: ${EY_QUALIFICATION_SCENARIO_PLAN:}
+    maximum-operations: ${EY_QUALIFICATION_MAX_OPERATIONS:25}
+    delay-millis: ${EY_QUALIFICATION_DELAY_MILLIS:1000}
+    report-directory: ${EY_QUALIFICATION_REPORT_DIRECTORY:reports/ey-sandbox-qualification}
+    allowed-sandbox-hosts:
+      - einvapisandbox.irp5.in
+      - sandbox.einvoice5.gst.gov.in

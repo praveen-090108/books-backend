@@ -10,9 +10,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface DocumentNumberPreferenceRepository extends JpaRepository<DocumentNumberPreference, Long> {
 
-    Optional<DocumentNumberPreference> findByDocumentType(String documentType);
+    Optional<DocumentNumberPreference> findByOrganizationIdAndDocumentType(Long organizationId, String documentType);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select preference from DocumentNumberPreference preference where preference.documentType = :documentType")
-    Optional<DocumentNumberPreference> findByDocumentTypeForUpdate(@Param("documentType") String documentType);
+    @Query("select preference from DocumentNumberPreference preference where preference.organizationId = :organizationId and preference.documentType = :documentType")
+    Optional<DocumentNumberPreference> findByDocumentTypeForUpdate(
+            @Param("organizationId") Long organizationId,
+            @Param("documentType") String documentType);
 }

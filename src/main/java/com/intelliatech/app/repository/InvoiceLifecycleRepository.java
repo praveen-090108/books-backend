@@ -19,6 +19,15 @@ public interface InvoiceLifecycleRepository extends JpaRepository<InvoiceLifecyc
 
     List<InvoiceLifecycle> findAllByStatusIn(Collection<InvoiceStatus> statuses);
 
+    @Query("""
+            select lifecycle from InvoiceLifecycle lifecycle
+            join fetch lifecycle.invoice invoice
+            where invoice.organizationId = :organizationId and lifecycle.status in :statuses
+            """)
+    List<InvoiceLifecycle> findAllByOrganizationIdAndStatusIn(
+            @Param("organizationId") Long organizationId,
+            @Param("statuses") Collection<InvoiceStatus> statuses);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select lifecycle from InvoiceLifecycle lifecycle join fetch lifecycle.invoice where lifecycle.invoice.id = :invoiceId")
     Optional<InvoiceLifecycle> findByInvoiceIdForUpdate(@Param("invoiceId") Long invoiceId);

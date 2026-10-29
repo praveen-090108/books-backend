@@ -628,6 +628,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
     }
 
     private void applyPaymentFields(InvoicePayment payment, BusinessRecord invoice, RecordInvoicePaymentRequest request, PaymentAmounts amounts) {
+        payment.setOrganizationId(invoice.getOrganizationId());
         payment.setPrimaryInvoice(invoice);
         payment.setCustomerName(invoice.getPartyName());
         payment.setCurrencyCode(currencyCode(invoice));

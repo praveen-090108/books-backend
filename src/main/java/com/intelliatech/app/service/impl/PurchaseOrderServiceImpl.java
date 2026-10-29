@@ -36,6 +36,7 @@ import com.intelliatech.app.repository.TaxRateRepository;
 import com.intelliatech.app.repository.VendorRepository;
 import com.intelliatech.app.service.DocumentNumberPreferenceService;
 import com.intelliatech.app.service.ExpenseTaxCalculator;
+import com.intelliatech.app.service.FileStorageService;
 import com.intelliatech.app.service.PurchaseOrderService;
 import com.lowagie.text.Document;
 import com.lowagie.text.Element;
@@ -61,6 +62,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.YearMonth;
@@ -76,6 +79,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
+import com.intelliatech.app.security.TenantContext;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -87,7 +91,6 @@ import org.springframework.util.StringUtils;
 @Service
 @RequiredArgsConstructor
 public class PurchaseOrderServiceImpl implements PurchaseOrderService {
-    private static final Long ORGANIZATION_ID = 1L;
     private static final BigDecimal ZERO = new BigDecimal("0.00");
 
     private final PurchaseOrderRepository purchaseOrderRepository;
@@ -98,6 +101,10 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private final ExpenseTaxCalculator taxCalculator;
     private final DocumentNumberPreferenceService numberService;
     private final ObjectMapper objectMapper;
+    private final FileStorageService fileStorageService;
+    private final TenantContext tenants;
+
+    private Long organizationId() { return tenants.requireOrganizationId(); }
 
     @Override
     @Transactional(readOnly = true)
@@ -116,7 +123,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Override
     @Transactional(readOnly = true)
     public PurchaseOrderSummaryResponse summary() {
-        List<PurchaseOrder> orders = purchaseOrderRepository.findAllByOrganizationIdAndDeletedFalse(ORGANIZATION_ID);
+        List<PurchaseOrder> orders = purchaseOrderRepository.findAllByOrganizationIdAndDeletedFalse(organizationId());
         long drafts = 0, issued = 0, partial = 0, received = 0, billed = 0;
         BigDecimal total = ZERO, outstanding = ZERO, month = ZERO;
         YearMonth currentMonth = YearMonth.now();
@@ -142,8 +149,8 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional(readOnly = true)
     public PurchaseOrderFiltersResponse filters() {
         OrganizationProfile profile = organizationProfile();
-        List<PurchaseOrderFiltersResponse.VendorOption> vendors = vendorRepository.findAll().stream()
-                .filter(vendor -> ORGANIZATION_ID.equals(vendor.getOrganizationId()) && vendor.getStatus() == VendorStatus.ACTIVE)
+        List<PurchaseOrderFiltersResponse.VendorOption> vendors = vendorRepository.findAllByOrganizationId(organizationId()).stream()
+                .filter(vendor -> vendor.getStatus() == VendorStatus.ACTIVE)
                 .map(vendor -> new PurchaseOrderFiltersResponse.VendorOption(vendor.getId(), vendor.getVendorNumber(),
                         vendor.getVendorName(), vendor.getDisplayName(), vendor.getGstin(), vendor.getTaxTreatment(),
                         vendor.getSourceOfSupply(), vendor.getCurrency(), vendor.getPaymentTerms(), vendor.getPrimaryContact(),
@@ -169,7 +176,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     @Transactional
     public PurchaseOrderResponse create(PurchaseOrderRequest request, String action) {
         PurchaseOrder order = new PurchaseOrder();
-        order.setOrganizationId(ORGANIZATION_ID);
+        order.setOrganizationId(organizationId());
         order.setPurchaseOrderNumber(nextNumber());
         order.setCreatedBy(currentUser());
         order.setUpdatedBy(currentUser());
@@ -239,7 +246,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     public PurchaseOrderResponse cloneOrder(Long id) {
         PurchaseOrder source = getOrder(id);
         PurchaseOrder clone = new PurchaseOrder();
-        clone.setOrganizationId(ORGANIZATION_ID);
+        clone.setOrganizationId(organizationId());
         clone.setPurchaseOrderNumber(nextNumber());
         clone.setCreatedBy(currentUser());
         clone.setUpdatedBy(currentUser());
@@ -365,7 +372,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     }
 
     private void copy(PurchaseOrderRequest request, PurchaseOrder order) {
-        Vendor vendor = vendorRepository.findByIdAndOrganizationId(request.vendorId(), ORGANIZATION_ID)
+        Vendor vendor = vendorRepository.findByIdAndOrganizationId(request.vendorId(), organizationId())
                 .orElseThrow(() -> new ResourceNotFoundException("Vendor not found."));
         if (vendor.getStatus() != VendorStatus.ACTIVE) throw new IllegalArgumentException("Only active Vendors can be selected.");
         SupplyState source = state(request.sourceOfSupplyCode(), "Source of Supply");
@@ -480,7 +487,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             LocalDate expectedDeliveryTo, BigDecimal minAmount, BigDecimal maxAmount) {
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(builder.equal(root.get("organizationId"), ORGANIZATION_ID)); predicates.add(builder.isFalse(root.get("deleted")));
+            predicates.add(builder.equal(root.get("organizationId"), organizationId())); predicates.add(builder.isFalse(root.get("deleted")));
             if (StringUtils.hasText(search)) {
                 String term = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
                 var item = root.join("items", JoinType.LEFT);
@@ -537,9 +544,9 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
         order.setUpdatedBy(currentUser()); activity(order, "ISSUED", details);
     }
 
-    private PurchaseOrder getOrder(Long id) { return purchaseOrderRepository.findByIdAndOrganizationIdAndDeletedFalse(id, ORGANIZATION_ID)
+    private PurchaseOrder getOrder(Long id) { return purchaseOrderRepository.findByIdAndOrganizationIdAndDeletedFalse(id, organizationId())
             .orElseThrow(() -> new ResourceNotFoundException("Purchase Order not found.")); }
-    private PurchaseOrder getOrderForUpdate(Long id) { return purchaseOrderRepository.findForUpdate(id, ORGANIZATION_ID)
+    private PurchaseOrder getOrderForUpdate(Long id) { return purchaseOrderRepository.findForUpdate(id, organizationId())
             .orElseThrow(() -> new ResourceNotFoundException("Purchase Order not found.")); }
     private SupplyState state(String code, String label) { return supplyStateRepository.findById(code)
             .orElseThrow(() -> new IllegalArgumentException(label + " is not valid.")); }
@@ -549,7 +556,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
     private String nextNumber() {
         String number;
         do { number = numberService.allocateForCreate("purchaseOrders"); }
-        while (purchaseOrderRepository.existsByOrganizationIdAndPurchaseOrderNumber(ORGANIZATION_ID, number));
+        while (purchaseOrderRepository.existsByOrganizationIdAndPurchaseOrderNumber(organizationId(), number));
         return number;
     }
 
@@ -635,7 +642,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             logo.setAlignment(Image.ALIGN_LEFT);
             companyCell.addElement(logo);
         } else {
-            Paragraph wordmark = new Paragraph("INTELLIATECH", purchaseOrderFont(18, true, ink));
+            Paragraph wordmark = new Paragraph("IRAL", purchaseOrderFont(20, true, ink));
             wordmark.setSpacingAfter(8);
             companyCell.addElement(wordmark);
         }
@@ -778,7 +785,7 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
                 .findFirstByModuleAndTypeOrderByRecordDateDesc("settings", "branding").orElse(null);
         JsonNode details = jsonNode(organization == null ? null : organization.getNotes());
         JsonNode brandDetails = jsonNode(branding == null ? null : branding.getNotes());
-        String name = organization == null ? "IntelliaTech Pvt. Ltd." : value(organization.getPartyName());
+        String name = organization == null ? "IRAL" : value(organization.getPartyName());
         String address = details.path("address").asText(organization == null ? "" : value(organization.getPartyCity()));
         String state = details.path("state").asText("");
         String pincode = details.path("pincode").asText("");
@@ -800,10 +807,29 @@ public class PurchaseOrderServiceImpl implements PurchaseOrderService {
             if (logoUrl.startsWith("data:image") && logoUrl.contains(",")) {
                 return Image.getInstance(Base64.getDecoder().decode(logoUrl.substring(logoUrl.indexOf(',') + 1)));
             }
+            String storageKey = brandingLogoStorageKey(logoUrl);
+            if (StringUtils.hasText(storageKey)) {
+                return Image.getInstance(fileStorageService.download(storageKey).content());
+            }
             return Image.getInstance(logoUrl);
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private String brandingLogoStorageKey(String logoUrl) {
+        for (String marker : List.of("/branding/logo/", "/branding-assets/")) {
+            int markerIndex = logoUrl.indexOf(marker);
+            if (markerIndex >= 0) {
+                String fileName = logoUrl.substring(markerIndex + marker.length()).split("[?#]", 2)[0];
+                fileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+                if (fileName.matches("[A-Za-z0-9._-]+")) {
+                    return "branding/logo/" + fileName;
+                }
+                return "";
+            }
+        }
+        return "";
     }
 
     private Font purchaseOrderFont(float size, boolean bold, Color color) {

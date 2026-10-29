@@ -29,6 +29,14 @@ public interface BusinessRecordRepository extends JpaRepository<BusinessRecord, 
 
     Optional<BusinessRecord> findByModuleAndTypeAndId(String module, String type, Long id);
 
+    Optional<BusinessRecord> findByOrganizationIdAndModuleAndTypeAndId(
+            Long organizationId, String module, String type, Long id);
+
+    boolean existsByOrganizationIdAndRecordNumber(Long organizationId, String recordNumber);
+
+    List<BusinessRecord> findByOrganizationIdAndRecordDateBetween(
+            Long organizationId, LocalDate start, LocalDate end);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from BusinessRecord r where r.module='resources' and r.type='resources' and r.id=:id")
     Optional<BusinessRecord> findResourceForUpdate(@Param("id") Long id);
@@ -54,6 +62,8 @@ public interface BusinessRecordRepository extends JpaRepository<BusinessRecord, 
             String type,
             String partyName
     );
+    Optional<BusinessRecord> findFirstByOrganizationIdAndModuleAndTypeAndPartyNameIgnoreCase(
+            Long organizationId, String module, String type, String partyName);
 
     Optional<BusinessRecord> findFirstByModuleAndTypeOrderByRecordDateDesc(String module, String type);
 

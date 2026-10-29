@@ -19,19 +19,26 @@ public class CurrentUserService {
         if (authentication == null || !authentication.isAuthenticated()) {
             throw new AccessDeniedException("Authentication is required.");
         }
-        return users.findForLoginEmail(authentication.getName())
+        return authenticatedUser(authentication)
                 .orElseThrow(() -> new AccessDeniedException("The authenticated user account no longer exists."));
     }
 
     public Optional<AppUser> findCurrentUser() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication == null || !authentication.isAuthenticated()) return Optional.empty();
-        return users.findForLoginEmail(authentication.getName());
+        return authenticatedUser(authentication);
     }
 
     public Long getCurrentUserId() { return getCurrentUser().getId(); }
 
     public boolean isAdmin(AppUser user) {
         return user.getRoleName() != null && user.getRoleName().toLowerCase().contains("admin");
+    }
+
+    private Optional<AppUser> authenticatedUser(Authentication authentication) {
+        if (authentication.getPrincipal() instanceof AuthenticatedUserPrincipal principal) {
+            return users.findById(principal.userId());
+        }
+        return users.findAllForLoginEmail(authentication.getName()).stream().findFirst();
     }
 }

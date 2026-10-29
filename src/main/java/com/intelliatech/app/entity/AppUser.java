@@ -21,7 +21,15 @@ public class AppUser {
     private AppUser manager;
     @Column(length = 160) private String name;
     @Column(unique = true, length = 160) private String email;
+    @Column(unique = true, length = 80) private String username;
     @Column(length = 255) private String passwordHash;
+    @Column(nullable = false) private boolean emailVerified;
+    @Column(nullable = false, length = 32) private String accountStatus = "ACTIVE";
+    @Column(nullable = false) private boolean platformAdmin;
+    @Column(nullable = false) private long tokenVersion;
+    @Column(nullable = false) private int failedLoginAttempts;
+    private LocalDateTime lockedUntil;
+    private LocalDateTime lastLoginAt;
     @Column(length = 32) private String phone;
     @Column(length = 120) private String designation;
     @Column(nullable = false, length = 160) private String roleName;

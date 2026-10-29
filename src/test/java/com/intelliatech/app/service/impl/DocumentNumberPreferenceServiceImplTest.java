@@ -5,14 +5,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 
 import com.intelliatech.app.entity.DocumentNumberPreference;
 import com.intelliatech.app.dto.request.DocumentNumberPreferenceRequest;
 import com.intelliatech.app.repository.BusinessRecordRepository;
 import com.intelliatech.app.repository.DocumentNumberPreferenceRepository;
+import com.intelliatech.app.security.TenantContext;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -28,16 +31,22 @@ class DocumentNumberPreferenceServiceImplTest {
     @Mock
     private BusinessRecordRepository businessRecordRepository;
 
+    @Mock
+    private TenantContext tenantContext;
+
     @InjectMocks
     private DocumentNumberPreferenceServiceImpl service;
+
+    @BeforeEach
+    void tenant() { lenient().when(tenantContext.requireOrganizationId()).thenReturn(1L); }
 
     @Test
     void allocatesNextNumberFromLatestMatchingInvoice() {
         DocumentNumberPreference preference = preference("INV-2026", "-", "", "{####}", 1L, 1L);
-        when(repository.findByDocumentTypeForUpdate("invoices")).thenReturn(Optional.of(preference));
+        when(repository.findByDocumentTypeForUpdate(1L, "invoices")).thenReturn(Optional.of(preference));
         when(businessRecordRepository.findRecordNumbersByModuleAndType("sales", "invoices"))
                 .thenReturn(List.of("INV-2026-0047", "LEGACY-9999"));
-        when(businessRecordRepository.existsByRecordNumber("INV-2026-0048")).thenReturn(false);
+        when(businessRecordRepository.existsByOrganizationIdAndRecordNumber(1L, "INV-2026-0048")).thenReturn(false);
         when(repository.save(any(DocumentNumberPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         String allocated = service.allocateForCreate("invoices");
@@ -51,10 +60,10 @@ class DocumentNumberPreferenceServiceImplTest {
     @Test
     void preservesSlashSeparatedFinancialYearFormat() {
         DocumentNumberPreference preference = preference("INT/26-27/", "/", "", "{0000}", 1L, 1L);
-        when(repository.findByDocumentTypeForUpdate("invoices")).thenReturn(Optional.of(preference));
+        when(repository.findByDocumentTypeForUpdate(1L, "invoices")).thenReturn(Optional.of(preference));
         when(businessRecordRepository.findRecordNumbersByModuleAndType("sales", "invoices"))
                 .thenReturn(List.of("INT/26-27/0125"));
-        when(businessRecordRepository.existsByRecordNumber("INT/26-27/0126")).thenReturn(false);
+        when(businessRecordRepository.existsByOrganizationIdAndRecordNumber(1L, "INT/26-27/0126")).thenReturn(false);
         when(repository.save(any(DocumentNumberPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(service.allocateForCreate("invoices")).isEqualTo("INT/26-27/0126");
@@ -64,11 +73,11 @@ class DocumentNumberPreferenceServiceImplTest {
     @Test
     void skipsAConflictingGlobalRecordNumber() {
         DocumentNumberPreference preference = preference("INV", "-", "", "000", 10L, 10L);
-        when(repository.findByDocumentTypeForUpdate("invoices")).thenReturn(Optional.of(preference));
+        when(repository.findByDocumentTypeForUpdate(1L, "invoices")).thenReturn(Optional.of(preference));
         when(businessRecordRepository.findRecordNumbersByModuleAndType("sales", "invoices"))
                 .thenReturn(List.of());
-        when(businessRecordRepository.existsByRecordNumber("INV-010")).thenReturn(true);
-        when(businessRecordRepository.existsByRecordNumber("INV-011")).thenReturn(false);
+        when(businessRecordRepository.existsByOrganizationIdAndRecordNumber(1L, "INV-010")).thenReturn(true);
+        when(businessRecordRepository.existsByOrganizationIdAndRecordNumber(1L, "INV-011")).thenReturn(false);
         when(repository.save(any(DocumentNumberPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(service.allocateForCreate("invoices")).isEqualTo("INV-011");
@@ -79,10 +88,10 @@ class DocumentNumberPreferenceServiceImplTest {
     void allocatesNextCustomerCodeFromExistingCustomers() {
         DocumentNumberPreference preference = preference("CUST", "-", "", "0000", 1L, 1L);
         preference.setDocumentType("customers");
-        when(repository.findByDocumentTypeForUpdate("customers")).thenReturn(Optional.of(preference));
+        when(repository.findByDocumentTypeForUpdate(1L, "customers")).thenReturn(Optional.of(preference));
         when(businessRecordRepository.findRecordNumbersByModuleAndType("sales", "customers"))
                 .thenReturn(List.of("CUST-0001", "CUST-0004", "LEGACY-CUSTOMER"));
-        when(businessRecordRepository.existsByRecordNumber("CUST-0005")).thenReturn(false);
+        when(businessRecordRepository.existsByOrganizationIdAndRecordNumber(1L, "CUST-0005")).thenReturn(false);
         when(repository.save(any(DocumentNumberPreference.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         assertThat(service.allocateForCreate("customers")).isEqualTo("CUST-0005");

@@ -16,7 +16,7 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 @EntityListeners(AuditingEntityListener.class)
 public class Asset {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 64) private String assetNumber;
     @Column(nullable = false, length = 180) private String assetName;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "category_id") private AssetCategory category;

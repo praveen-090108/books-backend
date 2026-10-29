@@ -16,12 +16,15 @@ server:
 
 app:
   environment: production
+  saas:
+    registration-enabled: ${IRAL_REGISTRATION_ENABLED:false}
   frontend-url: ${PROD_FRONTEND_URL}
   cors:
     allowed-origins: ${PROD_FRONTEND_URL}
   security:
     jwt-secret: ${JWT_SECRET}
     jwt-expiration-minutes: 60
+  # Compatibility safety switch retained for validation; no runtime initializer exists.
   bootstrap:
     default-admin-enabled: false
   storage:

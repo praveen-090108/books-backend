@@ -10,7 +10,7 @@ import lombok.Setter;
 @Getter @Setter @Entity @Table(name = "asset_maintenance")
 public class AssetMaintenance {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY) private Long id;
-    @Column(nullable = false) private Long organizationId = 1L;
+    @org.hibernate.annotations.TenantId @Column(nullable = false) private Long organizationId;
     @Column(nullable = false, length = 64) private String workOrderNumber;
     @ManyToOne(fetch = FetchType.LAZY, optional = false) @JoinColumn(name = "asset_id") private Asset asset;
     @Column(nullable = false, length = 80) private String maintenanceType;

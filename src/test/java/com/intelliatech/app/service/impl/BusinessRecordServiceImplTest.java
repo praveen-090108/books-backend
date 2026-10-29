@@ -16,6 +16,7 @@ import com.intelliatech.app.service.InvoiceLifecycleService;
 import com.intelliatech.app.service.ResourceLifecycleService;
 import com.intelliatech.app.security.CurrentUserService;
 import com.intelliatech.app.security.DataScopeService;
+import com.intelliatech.app.security.TenantContext;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
@@ -41,6 +42,7 @@ class BusinessRecordServiceImplTest {
     @Mock private DataScopeService dataScopeService;
     @Mock private JdbcTemplate jdbcTemplate;
     @Mock private ResourceLifecycleService resourceLifecycleService;
+    @Mock private TenantContext tenantContext;
 
     private BusinessRecordServiceImpl service;
 
@@ -55,15 +57,17 @@ class BusinessRecordServiceImplTest {
                 currentUserService,
                 dataScopeService,
                 jdbcTemplate,
-                resourceLifecycleService
+                resourceLifecycleService,
+                tenantContext
         );
         when(currentUserService.getCurrentUserId()).thenReturn(1L);
+        when(tenantContext.requireOrganizationId()).thenReturn(1L);
     }
 
     @Test
     void invoiceCreateAlwaysUsesBackendAllocatedNumber() {
         when(documentNumberPreferenceService.allocateForCreate("invoices")).thenReturn("INV-2026-0048");
-        when(repository.existsByRecordNumber("INV-2026-0048")).thenReturn(false);
+        when(repository.existsByOrganizationIdAndRecordNumber(1L, "INV-2026-0048")).thenReturn(false);
         when(repository.save(any(BusinessRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.create("sales", "invoices", request("SOURCE-NUMBER"));
@@ -85,7 +89,7 @@ class BusinessRecordServiceImplTest {
         existing.setAmount(BigDecimal.TEN);
         existing.setBalanceAmount(BigDecimal.TEN);
         existing.setRecordDate(LocalDate.of(2026, 7, 14));
-        when(repository.findByModuleAndTypeAndId("sales", "invoices", 42L)).thenReturn(Optional.of(existing));
+        when(repository.findByOrganizationIdAndModuleAndTypeAndId(1L, "sales", "invoices", 42L)).thenReturn(Optional.of(existing));
         when(repository.save(existing)).thenReturn(existing);
 
         var response = service.update("sales", "invoices", 42L, request("ATTEMPTED-CHANGE"));
@@ -97,7 +101,7 @@ class BusinessRecordServiceImplTest {
     @Test
     void customerCreateAlwaysUsesBackendAllocatedCode() {
         when(documentNumberPreferenceService.allocateForCreate("customers")).thenReturn("CUST-0008");
-        when(repository.existsByRecordNumber("CUST-0008")).thenReturn(false);
+        when(repository.existsByOrganizationIdAndRecordNumber(1L, "CUST-0008")).thenReturn(false);
         when(repository.save(any(BusinessRecord.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = service.create("sales", "customers", customerRequest("CLIENT-SUPPLIED"));
@@ -118,7 +122,7 @@ class BusinessRecordServiceImplTest {
         existing.setAmount(BigDecimal.ZERO);
         existing.setBalanceAmount(BigDecimal.ZERO);
         existing.setRecordDate(LocalDate.of(2026, 7, 14));
-        when(repository.findByModuleAndTypeAndId("sales", "customers", 84L)).thenReturn(Optional.of(existing));
+        when(repository.findByOrganizationIdAndModuleAndTypeAndId(1L, "sales", "customers", 84L)).thenReturn(Optional.of(existing));
         when(repository.save(existing)).thenReturn(existing);
 
         var response = service.update("sales", "customers", 84L, customerRequest("ATTEMPTED-CHANGE"));

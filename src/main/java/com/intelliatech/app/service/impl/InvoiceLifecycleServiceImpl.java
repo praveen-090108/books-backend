@@ -44,6 +44,7 @@ import com.intelliatech.app.repository.EInvoiceDetailRepository;
 import com.intelliatech.app.repository.PaymentReceiptRepository;
 import com.intelliatech.app.service.InvoiceLifecycleService;
 import com.intelliatech.app.service.BankAccountService;
+import com.intelliatech.app.service.BankLedgerService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -93,6 +94,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
     private final InvoiceCommunicationRepository communicationRepository;
     private final ObjectMapper objectMapper;
     private final BankAccountService bankAccountService;
+    private final BankLedgerService bankLedgerService;
     private final EInvoiceDetailRepository eInvoiceDetailRepository;
 
     @Autowired
@@ -103,7 +105,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
             InvoiceCreditAllocationRepository creditAllocationRepository,
             InvoiceCreditNoteLinkRepository creditNoteLinkRepository, InvoiceReminderRepository reminderRepository,
             InvoiceCommunicationRepository communicationRepository, ObjectMapper objectMapper,
-            BankAccountService bankAccountService, EInvoiceDetailRepository eInvoiceDetailRepository) {
+            BankAccountService bankAccountService, BankLedgerService bankLedgerService, EInvoiceDetailRepository eInvoiceDetailRepository) {
         this.businessRecordRepository = businessRecordRepository;
         this.lifecycleRepository = lifecycleRepository;
         this.counterRepository = counterRepository;
@@ -117,6 +119,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         this.communicationRepository = communicationRepository;
         this.objectMapper = objectMapper;
         this.bankAccountService = bankAccountService;
+        this.bankLedgerService = bankLedgerService;
         this.eInvoiceDetailRepository = eInvoiceDetailRepository;
     }
 
@@ -129,7 +132,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
             InvoiceCommunicationRepository communicationRepository, ObjectMapper objectMapper) {
         this(businessRecordRepository, lifecycleRepository, counterRepository, paymentRepository,
                 allocationRepository, tdsRepository, receiptRepository, creditAllocationRepository,
-                creditNoteLinkRepository, reminderRepository, communicationRepository, objectMapper, null, null);
+                creditNoteLinkRepository, reminderRepository, communicationRepository, objectMapper, null, null, null);
     }
 
     @Override
@@ -316,6 +319,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         saveTds(payment, request, amounts);
         recalculate(lifecycle);
         saveReceipt(payment, lifecycle.getBalanceDue());
+        syncBankLedger(payment);
         return response(lifecycle, true);
     }
 
@@ -346,6 +350,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         saveTds(payment, request, amounts);
         recalculate(lifecycle);
         saveReceipt(payment, lifecycle.getBalanceDue());
+        syncBankLedger(payment);
         return response(lifecycle, true);
     }
 
@@ -368,6 +373,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
                     creditAllocationRepository.save(credit);
                 });
         recalculate(lifecycle);
+        if (bankLedgerService != null) bankLedgerService.reverse("PAYMENT_RECEIVED", payment.getId().toString(), payment.getReversalReason());
         return response(lifecycle, true);
     }
 
@@ -397,6 +403,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         paymentRepository.flush();
 
         recalculate(lifecycle);
+        if (bankLedgerService != null) bankLedgerService.reverse("PAYMENT_RECEIVED", paymentId.toString(), "Payment deleted.");
         return response(lifecycle, true);
     }
 
@@ -637,6 +644,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         Long retainedBankAccountId = payment.getBankAccount() == null ? null : payment.getBankAccount().getId();
         var bankAccount = bankAccountService == null ? null : bankAccountService.selection(request.bankAccountId(), retainedBankAccountId);
         payment.setBankAccount(bankAccount);
+        payment.setBalanceCategory(bankAccount == null ? null : balanceCategory(request.balanceCategory()));
         payment.setDepositAccount(bankAccount == null ? trimToNull(request.depositAccount()) : bankAccount.getAccountName());
         payment.setReferenceNumber(trimToNull(request.referenceNumber()));
         payment.setGrossAmountReceived(amounts.grossAmount());
@@ -646,6 +654,23 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
         payment.setAttachmentUrl(trimToNull(request.attachmentUrl()));
         payment.setSendThankYouEmail(Boolean.TRUE.equals(request.sendThankYouEmail()));
         if (payment.getCreatedBy() == null) payment.setCreatedBy(currentUser());
+    }
+
+    private void syncBankLedger(InvoicePayment payment) {
+        if (bankLedgerService == null) return;
+        bankLedgerService.sync(new BankLedgerService.Posting(
+                payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getBalanceCategory(),
+                "PAYMENT_RECEIVED", "PAYMENT_RECEIVED", payment.getId(), payment.getId().toString(), payment.getPaymentDate(),
+                payment.getNetBankCredit(), "IN", payment.getCurrencyCode(), payment.getPaymentNumber(),
+                "Customer payment received from " + payment.getCustomerName()));
+    }
+
+    private String balanceCategory(String value) {
+        String category = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!BankLedgerService.COUNTABLE.equals(category) && !BankLedgerService.NON_COUNTABLE.equals(category)) {
+            throw new IllegalArgumentException("Balance Type is required when a Bank Account is selected.");
+        }
+        return category;
     }
 
     private void saveTds(InvoicePayment payment, RecordInvoicePaymentRequest request, PaymentAmounts amounts) {
@@ -787,7 +812,7 @@ public class InvoiceLifecycleServiceImpl implements InvoiceLifecycleService {
             return new InvoicePaymentResponse(
                     payment.getId(), payment.getPaymentNumber(), receipt == null ? "" : receipt.getReceiptNumber(),
                     receipt == null ? ZERO : money(receipt.getRemainingBalance()), payment.getCurrencyCode(), payment.getPaymentDate(), payment.getPaymentMode(),
-                    payment.getDepositAccount(), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getReferenceNumber(), Boolean.TRUE.equals(payment.getReversed()) ? "Reversed" : "Paid",
+                    payment.getDepositAccount(), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getBalanceCategory(), payment.getReferenceNumber(), Boolean.TRUE.equals(payment.getReversed()) ? "Reversed" : "Paid",
                     money(allocation.getCashAmountApplied()),
                     money(allocation.getTdsAmountApplied()),
                     money(allocation.getCreditAmountApplied()), money(payment.getBankCharges()),

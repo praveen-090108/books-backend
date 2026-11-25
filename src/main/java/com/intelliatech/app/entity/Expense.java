@@ -63,6 +63,7 @@ public class Expense {
     @Column(length = 64) private String paymentMode;
     @Column(length = 120) private String paidThrough;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "bank_account_id") private BankAccountMaster bankAccount;
+    @Column(length = 24) private String balanceCategory;
     @Column(length = 160) private String projectName;
     @Enumerated(EnumType.STRING) @Column(nullable = false, length = 24) private ExpenseStatus status = ExpenseStatus.PAID;
     @Column(length = 255) private String attachmentName;

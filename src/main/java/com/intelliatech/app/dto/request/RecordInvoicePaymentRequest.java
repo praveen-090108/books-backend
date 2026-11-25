@@ -9,6 +9,7 @@ public record RecordInvoicePaymentRequest(
         String paymentMode,
         String depositAccount,
         Long bankAccountId,
+        String balanceCategory,
         String referenceNumber,
         Boolean tdsDeducted,
         BigDecimal tdsPercentage,
@@ -30,7 +31,7 @@ public record RecordInvoicePaymentRequest(
             BigDecimal tdsAmount, String tdsBaseType, String tdsSectionCode, String tdsCertificateNumber,
             LocalDate tdsCertificateDate, String tdsRemarks, BigDecimal bankCharges, BigDecimal creditApplied,
             String notes, String attachmentUrl, Boolean sendThankYouEmail, String idempotencyKey) {
-        this(amountReceived, paymentDate, paymentMode, depositAccount, null, referenceNumber, tdsDeducted,
+        this(amountReceived, paymentDate, paymentMode, depositAccount, null, null, referenceNumber, tdsDeducted,
                 tdsPercentage, tdsAmount, tdsBaseType, tdsSectionCode, tdsCertificateNumber,
                 tdsCertificateDate, tdsRemarks, bankCharges, creditApplied, notes, attachmentUrl,
                 sendThankYouEmail, idempotencyKey);

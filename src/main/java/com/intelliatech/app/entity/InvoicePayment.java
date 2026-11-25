@@ -65,6 +65,9 @@ public class InvoicePayment {
     @JoinColumn(name = "bank_account_id")
     private BankAccountMaster bankAccount;
 
+    @Column(length = 24)
+    private String balanceCategory;
+
     @Column(length = 160)
     private String bankAccountName;
 

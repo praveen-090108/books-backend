@@ -13,6 +13,7 @@ public record BillPaymentRequest(
         @NotBlank(message = "Payment mode is required") @Size(max = 64) String paymentMode,
         @Size(max = 160) String paidThrough,
         Long bankAccountId,
+        @Size(max = 24) String balanceCategory,
         @Size(max = 160) String toAccount,
         @Size(max = 120) String referenceNumber,
         @Size(max = 2000) String notes,

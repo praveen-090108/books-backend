@@ -18,6 +18,7 @@ public record PaymentReceivedResponse(
         String paymentMode,
         String depositAccount,
         Long bankAccountId,
+        String balanceCategory,
         String referenceNumber,
         BigDecimal grossAmountReceived,
         BigDecimal tdsAmount,

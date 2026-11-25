@@ -38,6 +38,7 @@ public record ExpenseResponse(
         String paymentMode,
         String paidThrough,
         Long bankAccountId,
+        String balanceCategory,
         String bankAccountName,
         String projectName,
         ExpenseStatus status,

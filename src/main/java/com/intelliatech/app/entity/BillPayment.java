@@ -24,6 +24,7 @@ public class BillPayment {
     @Column(nullable = false, length = 64) private String paymentMode;
     @Column(nullable = false, length = 160) private String paidThrough;
     @ManyToOne(fetch = FetchType.LAZY) @JoinColumn(name = "bank_account_id") private BankAccountMaster bankAccount;
+    @Column(length = 24) private String balanceCategory;
     @Column(length = 160) private String toAccount;
     @Column(length = 120) private String referenceNumber;
     @Column(nullable = false, precision = 18, scale = 2) private BigDecimal amount;

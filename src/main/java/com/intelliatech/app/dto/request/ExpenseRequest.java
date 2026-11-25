@@ -36,6 +36,7 @@ public record ExpenseRequest(
         @Size(max = 64) String paymentMode,
         @Size(max = 120) String paidThrough,
         Long bankAccountId,
+        @Size(max = 24) String balanceCategory,
         @Size(max = 160) String projectName,
         @NotNull(message = "Status is required") ExpenseStatus status,
         @Size(max = 255) String attachmentName,

@@ -69,6 +69,9 @@ public interface BusinessRecordRepository extends JpaRepository<BusinessRecord, 
 
     Optional<BusinessRecord> findByRecordNumber(String recordNumber);
 
+    Optional<BusinessRecord> findByOrganizationIdAndModuleAndTypeAndRecordNumber(
+            Long organizationId, String module, String type, String recordNumber);
+
     List<BusinessRecord> findAllByModuleAndTypeAndPartyNameIgnoreCaseOrderByRecordDateDesc(
             String module,
             String type,

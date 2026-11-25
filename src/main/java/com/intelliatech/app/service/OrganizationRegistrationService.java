@@ -88,6 +88,7 @@ public class OrganizationRegistrationService {
         memberships.save(membership);
 
         jdbc.update("INSERT INTO organization_settings(organization_id,contact_email) VALUES (?,?)", organization.getId(), email);
+        seedLeadSources(organization.getId(), user.getId());
         Plan free = plans.findByCodeAndActiveTrue("FREE")
                 .orElseThrow(() -> new IllegalStateException("The Free plan has not been provisioned."));
         OrganizationSubscription subscription = new OrganizationSubscription();
@@ -98,6 +99,27 @@ public class OrganizationRegistrationService {
         subscriptions.save(subscription);
 
         issueVerification(user, organization);
+    }
+
+    private void seedLeadSources(Long organizationId, Long userId) {
+        Object[][] defaults = {
+                {"Website", "Lead captured from the organization website.", 10},
+                {"Referral", "Lead referred by a customer, partner or employee.", 20},
+                {"Email", "Lead received through an email campaign or enquiry.", 30},
+                {"Social Media", "Lead generated through a social media channel.", 40},
+                {"Campaign", "Lead generated from a marketing campaign.", 50},
+                {"Partner", "Lead received through a business partner.", 60},
+                {"Event", "Lead generated from an event or conference.", 70},
+                {"Cold Call", "Lead created from outbound calling.", 80},
+                {"Other", "Any source not covered by the standard options.", 999}
+        };
+        for (Object[] source : defaults) {
+            jdbc.update("""
+                    INSERT IGNORE INTO lead_source_master
+                      (organization_id, name, description, display_order, created_by, updated_by)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """, organizationId, source[0], source[1], source[2], userId, userId);
+        }
     }
 
     @Transactional

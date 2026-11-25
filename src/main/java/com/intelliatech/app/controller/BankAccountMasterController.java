@@ -50,31 +50,32 @@ public class BankAccountMasterController {
         return rows.stream().map(this::response).toList();
     }
 
-    @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('ADMIN')") @Transactional
+    @PostMapping @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("@permissionGuard.can('settings','bankAccounts','CREATE')") @Transactional
     public Response create(@Valid @RequestBody Request request) {
         String name = request.accountName().trim();
         if (accounts.existsByOrganizationIdAndAccountNameIgnoreCase(org(), name)) throw new DuplicateResourceException("Bank Account already exists.");
         BankAccountMaster account = new BankAccountMaster(); account.setOrganizationId(org());
-        copy(request, account); account.setCreatedBy(user()); account.setUpdatedBy(user());
+        copy(request, account); account.setOpeningBalance(null); account.setCreatedBy(user()); account.setUpdatedBy(user());
         return response(accounts.save(account));
     }
 
-    @PutMapping("/{id}") @PreAuthorize("hasRole('ADMIN')") @Transactional
+    @PutMapping("/{id}") @PreAuthorize("@permissionGuard.can('settings','bankAccounts','EDIT')") @Transactional
     public Response update(@PathVariable Long id, @Valid @RequestBody Request request) {
         BankAccountMaster account = get(id); String name = request.accountName().trim();
         if (accounts.existsByOrganizationIdAndAccountNameIgnoreCaseAndIdNot(org(), name, id)) throw new DuplicateResourceException("Bank Account already exists.");
-        String retainedNumber = account.getAccountNumber(); copy(request, account);
+        String retainedNumber = account.getAccountNumber(); BigDecimal retainedOpeningBalance = account.getOpeningBalance(); copy(request, account);
         if (clean(request.accountNumber()) == null) account.setAccountNumber(retainedNumber);
+        account.setOpeningBalance(retainedOpeningBalance);
         account.setUpdatedBy(user()); return response(accounts.save(account));
     }
 
-    @PatchMapping("/{id}/status") @PreAuthorize("hasRole('ADMIN')") @Transactional
+    @PatchMapping("/{id}/status") @PreAuthorize("@permissionGuard.can('settings','bankAccounts','EDIT')") @Transactional
     public Response status(@PathVariable Long id, @RequestParam boolean active) {
         BankAccountMaster account = get(id); account.setActive(active); account.setUpdatedBy(user());
         return response(accounts.save(account));
     }
 
-    @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) @PreAuthorize("hasRole('ADMIN')") @Transactional
+    @DeleteMapping("/{id}") @ResponseStatus(HttpStatus.NO_CONTENT) @PreAuthorize("@permissionGuard.can('settings','bankAccounts','DELETE')") @Transactional
     public void delete(@PathVariable Long id) {
         BankAccountMaster account = get(id);
         if (usageCount(id) > 0) { account.setActive(false); account.setUpdatedBy(user()); accounts.save(account); }

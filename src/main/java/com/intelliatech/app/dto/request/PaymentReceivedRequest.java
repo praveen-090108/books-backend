@@ -11,6 +11,7 @@ public record PaymentReceivedRequest(
         String paymentMode,
         String depositAccount,
         Long bankAccountId,
+        String balanceCategory,
         String referenceNumber,
         Boolean tdsDeducted,
         BigDecimal tdsPercentage,

@@ -28,6 +28,7 @@ import com.intelliatech.app.repository.VendorRepository;
 import com.intelliatech.app.service.ExpenseService;
 import com.intelliatech.app.service.ExpenseTaxCalculator;
 import com.intelliatech.app.service.BankAccountService;
+import com.intelliatech.app.service.BankLedgerService;
 import com.intelliatech.app.service.GstTreatmentRules;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
@@ -76,6 +77,7 @@ public class ExpenseServiceImpl implements ExpenseService {
     private final ExpenseTaxCalculator taxCalculator;
     private final GstTreatmentRules gstTreatmentRules;
     private final BankAccountService bankAccountService;
+    private final BankLedgerService bankLedgerService;
     private final ObjectMapper objectMapper;
     private final TenantContext tenants;
 
@@ -106,6 +108,7 @@ public class ExpenseServiceImpl implements ExpenseService {
         saved.setExpenseNumber("EXP-%06d".formatted(saved.getId()));
         saved = expenseRepository.saveAndFlush(saved);
         syncLegacyRecord(saved);
+        syncBankLedger(saved);
         return toResponse(saved);
     }
 
@@ -115,6 +118,7 @@ public class ExpenseServiceImpl implements ExpenseService {
         copy(request, expense, id);
         Expense saved = expenseRepository.save(expense);
         syncLegacyRecord(saved);
+        syncBankLedger(saved);
         return toResponse(saved);
     }
 
@@ -122,7 +126,9 @@ public class ExpenseServiceImpl implements ExpenseService {
     public void delete(Long id) {
         Expense expense = getExpense(id);
         expense.setDeleted(true);
-        businessRecordRepository.findByRecordNumber(expense.getExpenseNumber())
+        bankLedgerService.reverse("EXPENSE", id.toString(), "Expense deleted.");
+        businessRecordRepository.findByOrganizationIdAndModuleAndTypeAndRecordNumber(
+                expense.getOrganizationId(), "purchases", "expenses", expense.getExpenseNumber())
                 .ifPresent(businessRecordRepository::delete);
     }
 
@@ -241,6 +247,7 @@ public class ExpenseServiceImpl implements ExpenseService {
             throw new IllegalArgumentException("Bank Account is required for the selected Payment Mode.");
         }
         expense.setBankAccount(bankAccount);
+        expense.setBalanceCategory(bankAccount == null ? null : balanceCategory(request.balanceCategory()));
         expense.setPaidThrough(bankAccount == null ? clean(request.paidThrough()) : bankAccountService.displayName(bankAccount));
         expense.setProjectName(clean(request.projectName()));
         expense.setStatus(request.status());
@@ -267,9 +274,33 @@ public class ExpenseServiceImpl implements ExpenseService {
                 expense.getAmountType(), taxSummary, expense.getTdsDeducted(), expense.getCurrency(), expense.getReferenceNumber(),
                 expense.getDescription(), expense.getNotes(), expense.getPaymentMode(), expense.getPaidThrough(),
                 expense.getBankAccount() == null ? null : expense.getBankAccount().getId(),
+                expense.getBalanceCategory(),
                 expense.getBankAccount() == null ? expense.getPaidThrough() : expense.getBankAccount().getAccountName(),
                 expense.getProjectName(), expense.getStatus(), expense.getAttachmentName(), expense.getAttachmentUrl(),
                 expense.getCreatedBy(), expense.getCreatedAt(), expense.getUpdatedAt());
+    }
+
+    private void syncBankLedger(Expense expense) {
+        if (expense.isDeleted() || expense.getStatus() != ExpenseStatus.PAID || expense.getBankAccount() == null) {
+            bankLedgerService.reverse("EXPENSE", expense.getId().toString(), "Expense is not a posted bank payment.");
+            return;
+        }
+        bankLedgerService.sync(new BankLedgerService.Posting(expense.getBankAccount().getId(), expense.getBalanceCategory(),
+                "EXPENSE_PAID", "EXPENSE", expense.getId(), expense.getId().toString(), expense.getExpenseDate(),
+                expense.getTotalAmount(), "OUT", currencyCode(expense.getCurrency()), expense.getExpenseNumber(), expense.getExpenseTitle()));
+    }
+
+    private String balanceCategory(String value) {
+        String category = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!BankLedgerService.COUNTABLE.equals(category) && !BankLedgerService.NON_COUNTABLE.equals(category)) {
+            throw new IllegalArgumentException("Balance Type is required when a Bank Account is selected.");
+        }
+        return category;
+    }
+
+    private String currencyCode(String value) {
+        if (value == null || value.isBlank()) return "INR";
+        return value.trim().substring(0, Math.min(3, value.trim().length())).toUpperCase(Locale.ROOT);
     }
 
     private Specification<Expense> specification(
@@ -341,7 +372,9 @@ public class ExpenseServiceImpl implements ExpenseService {
     }
 
     private void syncLegacyRecord(Expense expense) {
-        BusinessRecord record = businessRecordRepository.findByRecordNumber(expense.getExpenseNumber()).orElseGet(BusinessRecord::new);
+        BusinessRecord record = businessRecordRepository.findByOrganizationIdAndModuleAndTypeAndRecordNumber(
+                expense.getOrganizationId(), "purchases", "expenses", expense.getExpenseNumber()).orElseGet(BusinessRecord::new);
+        record.setOrganizationId(expense.getOrganizationId());
         record.setModule("purchases");
         record.setType("expenses");
         record.setRecordNumber(expense.getExpenseNumber());

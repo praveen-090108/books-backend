@@ -66,7 +66,7 @@ public class LeadManagementService {
                 "dashboardEmployees", dashboardEmployees(),
                 "reportCustomers", jdbc.queryForList("SELECT br.id,br.party_name name FROM business_records br WHERE LOWER(br.module)='sales' AND LOWER(br.type)='customers' AND LOWER(br.status)='active' AND "+businessRecordAccess("br")+" ORDER BY br.party_name"),
                 "owners", jdbc.queryForList("SELECT owner_id FROM (SELECT owner_id FROM leads WHERE organization_id=? AND deleted=FALSE UNION SELECT owner_id FROM lead_companies WHERE organization_id=? AND deleted=FALSE UNION SELECT owner_id FROM lead_contacts WHERE organization_id=? AND deleted=FALSE) report_owners WHERE owner_id IS NOT NULL AND owner_id<>'' ORDER BY owner_id", String.class, organizationId(),organizationId(),organizationId()),
-                "sources", jdbc.queryForList("SELECT source FROM (SELECT source FROM leads WHERE organization_id=? AND deleted=FALSE UNION SELECT lead_source source FROM lead_companies WHERE organization_id=? AND deleted=FALSE UNION SELECT lead_source source FROM lead_contacts WHERE organization_id=? AND deleted=FALSE) report_sources WHERE source IS NOT NULL AND source<>'' ORDER BY source", String.class, organizationId(),organizationId(),organizationId()));
+                "sources", jdbc.queryForList("SELECT name FROM lead_source_master WHERE organization_id=? AND active=TRUE ORDER BY display_order,name", String.class, organizationId()));
     }
 
     /** Database-aggregated reporting payload shared by the Lead Reports categories. */

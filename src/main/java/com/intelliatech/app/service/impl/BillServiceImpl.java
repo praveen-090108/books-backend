@@ -54,6 +54,7 @@ public class BillServiceImpl implements BillService {
     private final PurchaseOrderService purchaseOrderService;
     private final ExpenseTaxCalculator taxCalculator;
     private final BankAccountService bankAccountService;
+    private final BankLedgerService bankLedgerService;
     private final DocumentNumberPreferenceService numberService;
     private final BusinessRecordRepository businessRecordRepository;
     private final ObjectMapper objectMapper;
@@ -185,6 +186,7 @@ public class BillServiceImpl implements BillService {
         // Bill is already managed here. Persist the new child explicitly before
         // flushing the orphan-removal collection so Hibernate can compare it safely.
         billPaymentRepository.save(payment);
+        syncBankLedger(payment);
         recalculateBalance(bill); bill.setUpdatedBy(currentUser());
         activity(bill, "PAYMENT_RECORDED", payment.getPaymentNumber() + " recorded for " + amount.toPlainString() + ".");
         return toResponse(billRepository.saveAndFlush(bill));
@@ -208,7 +210,7 @@ public class BillServiceImpl implements BillService {
         applyBankAccount(payment, request); payment.setToAccount(clean(request.toAccount()));
         payment.setReferenceNumber(clean(request.referenceNumber())); payment.setAmount(amount);
         payment.setNotes(clean(request.notes())); payment.setAttachmentName(clean(request.attachmentName()));
-        payment.setAttachmentUrl(clean(request.attachmentUrl())); recalculateBalance(bill); bill.setUpdatedBy(currentUser());
+        payment.setAttachmentUrl(clean(request.attachmentUrl())); syncBankLedger(payment); recalculateBalance(bill); bill.setUpdatedBy(currentUser());
         activity(bill, "PAYMENT_UPDATED", payment.getPaymentNumber() + " updated to " + amount.toPlainString() + ".");
         return toResponse(billRepository.saveAndFlush(bill));
     }
@@ -222,6 +224,7 @@ public class BillServiceImpl implements BillService {
         if (payment.getStatus() == BillPaymentStatus.REVERSED) throw new ResourceConflictException("This payment has already been reversed.");
         payment.setStatus(BillPaymentStatus.REVERSED); payment.setReversedAt(LocalDateTime.now()); payment.setReversedBy(currentUser());
         payment.setReversalReason(clean(request.reason())); recalculateBalance(bill); bill.setUpdatedBy(currentUser());
+        bankLedgerService.reverse("BILL_PAYMENT", payment.getId().toString(), payment.getReversalReason());
         activity(bill, "PAYMENT_REVERSED", payment.getPaymentNumber() + (StringUtils.hasText(request.reason()) ? ": " + request.reason().trim() : "."));
         return toResponse(bill);
     }
@@ -411,7 +414,7 @@ public class BillServiceImpl implements BillService {
             item.getSgstAmount(), item.getIgstAmount(), item.getCessAmount(), item.getLineTotal()); }
 
     private BillPaymentResponse paymentResponse(BillPayment payment) { return new BillPaymentResponse(payment.getId(), payment.getPaymentNumber(),
-            payment.getPaymentDate(), payment.getPaymentMode(), payment.getPaidThrough(), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getToAccount(), payment.getReferenceNumber(),
+            payment.getPaymentDate(), payment.getPaymentMode(), payment.getPaidThrough(), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getBalanceCategory(), payment.getToAccount(), payment.getReferenceNumber(),
             payment.getAmount(), payment.getNotes(), payment.getAttachmentName(), payment.getAttachmentUrl(), payment.getStatus(), payment.getReversedAt(),
             payment.getReversalReason(), payment.getCreatedBy(), payment.getCreatedAt()); }
 
@@ -422,7 +425,27 @@ public class BillServiceImpl implements BillService {
             throw new IllegalArgumentException("Bank Account is required for the selected Payment Mode.");
         }
         payment.setBankAccount(account);
+        payment.setBalanceCategory(account == null ? null : balanceCategory(request.balanceCategory()));
         payment.setPaidThrough(account == null ? Objects.requireNonNullElse(clean(request.paidThrough()), "Cash") : account.getAccountName());
+    }
+
+    private void syncBankLedger(BillPayment payment) {
+        if (payment.getBankAccount() == null || payment.getStatus() == BillPaymentStatus.REVERSED) {
+            bankLedgerService.reverse("BILL_PAYMENT", payment.getId().toString(), "Bill payment is not posted to a Bank Account.");
+            return;
+        }
+        bankLedgerService.sync(new BankLedgerService.Posting(payment.getBankAccount().getId(), payment.getBalanceCategory(),
+                "VENDOR_PAYMENT", "BILL_PAYMENT", payment.getId(), payment.getId().toString(), payment.getPaymentDate(),
+                payment.getAmount(), "OUT", payment.getBill().getCurrencyCode(), payment.getPaymentNumber(),
+                "Vendor payment for " + payment.getBill().getBillNumber()));
+    }
+
+    private String balanceCategory(String value) {
+        String category = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!BankLedgerService.COUNTABLE.equals(category) && !BankLedgerService.NON_COUNTABLE.equals(category)) {
+            throw new IllegalArgumentException("Balance Type is required when a Bank Account is selected.");
+        }
+        return category;
     }
 
     private Specification<Bill> specification(String search, Long vendorId, String status, String paymentStatus,

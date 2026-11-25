@@ -32,6 +32,7 @@ import com.intelliatech.app.repository.PaymentReceiptRepository;
 import com.intelliatech.app.service.InvoiceLifecycleService;
 import com.intelliatech.app.service.PaymentReceivedService;
 import com.intelliatech.app.service.BankAccountService;
+import com.intelliatech.app.service.BankLedgerService;
 import com.intelliatech.app.security.TenantContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -86,6 +87,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
     private final InvoiceLifecycleService lifecycleService;
     private final ObjectMapper objectMapper;
     private final BankAccountService bankAccountService;
+    private final BankLedgerService bankLedgerService;
     private final TenantContext tenants;
 
     @Override
@@ -211,6 +213,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
         saveTds(payment, request, prepared);
         refreshInvoices(prepared.invoiceIds());
         saveReceipt(payment, remainingBalance(prepared.invoiceIds()));
+        syncBankLedger(payment);
         return response(payment);
     }
 
@@ -243,6 +246,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
         saveTds(payment, request, prepared);
         refreshInvoices(affectedInvoices);
         saveReceipt(payment, remainingBalance(prepared.invoiceIds()));
+        syncBankLedger(payment);
         return response(payment);
     }
 
@@ -258,6 +262,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
         paymentRepository.save(payment);
         removePaymentCredits(payment, allocations, true);
         refreshInvoices(invoiceIds(allocations));
+        bankLedgerService.reverse("PAYMENT_RECEIVED", payment.getId().toString(), payment.getReversalReason());
         return response(payment);
     }
 
@@ -277,6 +282,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
         paymentRepository.delete(payment);
         paymentRepository.flush();
         refreshInvoices(invoiceIds);
+        bankLedgerService.reverse("PAYMENT_RECEIVED", id.toString(), "Payment deleted.");
     }
 
     private PreparedPayment prepare(PaymentReceivedRequest request, Map<Long, BigDecimal> priorSettlement) {
@@ -387,6 +393,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
         Long retainedBankAccountId = payment.getBankAccount() == null ? null : payment.getBankAccount().getId();
         var bankAccount = bankAccountService.selection(request.bankAccountId(), retainedBankAccountId);
         payment.setBankAccount(bankAccount);
+        payment.setBalanceCategory(bankAccount == null ? null : balanceCategory(request.balanceCategory()));
         payment.setDepositAccount(bankAccount == null ? trim(request.depositAccount()) : bankAccount.getAccountName());
         payment.setReferenceNumber(trim(request.referenceNumber()));
         payment.setGrossAmountReceived(prepared.gross());
@@ -476,7 +483,7 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
                 customer == null ? value(payment.getCustomerName()) : value(customer.getPartyName()),
                 customer == null ? "" : value(customer.getPartyEmail()),
                 customer == null ? "" : value(customer.getPartyPhone()), customerAddress(customer), payment.getPaymentDate(),
-                value(payment.getPaymentMode()), value(payment.getDepositAccount()), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), value(payment.getReferenceNumber()),
+                value(payment.getPaymentMode()), value(payment.getDepositAccount()), payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), value(payment.getBalanceCategory()), value(payment.getReferenceNumber()),
                 money(payment.getGrossAmountReceived()), money(tdsAmount), money(payment.getBankCharges()),
                 money(payment.getNetBankCredit()), money(allocated), money(available.subtract(allocated).max(ZERO)),
                 Boolean.TRUE.equals(payment.getReversed()) ? "Reversed" : "Paid", value(payment.getBankAccountName()),
@@ -489,6 +496,22 @@ public class PaymentReceivedServiceImpl implements PaymentReceivedService {
                 Boolean.TRUE.equals(payment.getReconciled()), Boolean.TRUE.equals(payment.getReversed()), payment.getReversedAt(),
                 value(payment.getReversalReason()), allocationResponses, payment.getCreatedAt()
         );
+    }
+
+    private void syncBankLedger(InvoicePayment payment) {
+        bankLedgerService.sync(new BankLedgerService.Posting(
+                payment.getBankAccount() == null ? null : payment.getBankAccount().getId(), payment.getBalanceCategory(),
+                "PAYMENT_RECEIVED", "PAYMENT_RECEIVED", payment.getId(), payment.getId().toString(), payment.getPaymentDate(),
+                payment.getNetBankCredit(), "IN", payment.getCurrencyCode(), payment.getPaymentNumber(),
+                "Customer payment received from " + payment.getCustomerName()));
+    }
+
+    private String balanceCategory(String value) {
+        String category = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!BankLedgerService.COUNTABLE.equals(category) && !BankLedgerService.NON_COUNTABLE.equals(category)) {
+            throw new IllegalArgumentException("Balance Type is required when a Bank Account is selected.");
+        }
+        return category;
     }
 
     private BusinessRecord resolvePaymentCustomer(

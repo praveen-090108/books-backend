@@ -14,6 +14,7 @@ public record InvoicePaymentResponse(
         String paymentMode,
         String depositAccount,
         Long bankAccountId,
+        String balanceCategory,
         String referenceNumber,
         String status,
         BigDecimal grossAmountReceived,
